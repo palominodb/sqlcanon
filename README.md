@@ -1,0 +1,4 @@
+sqlcanon
+========
+
+Canonicalize SQL statements
