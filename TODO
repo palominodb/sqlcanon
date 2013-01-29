@@ -1,0 +1,2 @@
+* canonicalize statements from MySQL binlogs
+* canonicalize statements from pcaps / on-the-wire
