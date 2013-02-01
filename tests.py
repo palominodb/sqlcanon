@@ -13,10 +13,10 @@ class CanonicalizeSqlTests(unittest.TestCase):
                 sql,
 
                 # canonicalized sql
-                u'SELECT * FROM `foo` WHERE `id` = 1',
+                u'SELECT * FROM `foo` WHERE `id`=1',
 
                 # parameterized sql
-                u'SELECT * FROM `foo` WHERE `id` = %d',
+                u'SELECT * FROM `foo` WHERE `id`=%d',
 
                 # values for parameterized sql
                 [1]
@@ -33,10 +33,10 @@ class CanonicalizeSqlTests(unittest.TestCase):
                 sql,
 
                 # canonicalized sql
-                u'SELECT * FROM `foo` WHERE `id` IN ( 1, 2, 3 )',
+                u'SELECT * FROM `foo` WHERE `id` IN (1,2,3)',
 
                 # parameterized sql
-                u'SELECT * FROM `foo` WHERE `id` IN ( %d, %d, %d )',
+                u'SELECT * FROM `foo` WHERE `id` IN (%d,%d,%d)',
 
                 # values for parameterized sql
                 [1, 2, 3]
@@ -53,10 +53,10 @@ class CanonicalizeSqlTests(unittest.TestCase):
                 sql,
 
                 # canonicalized sql
-                u'INSERT INTO `bar` VALUES ( \'string\', 25, 50.00 )',
+                u'INSERT INTO `bar` VALUES (\'string\',25,50.00)',
 
                 # parameterized sql
-                u'INSERT INTO `bar` VALUES ( %s, %d, %f )',
+                u'INSERT INTO `bar` VALUES (%s,%d,%f)',
 
                 # values for parameterized sql
                 ['string', 25, 50.00]
@@ -73,10 +73,10 @@ class CanonicalizeSqlTests(unittest.TestCase):
                 sql,
 
                 # canonicalized sql
-                u'INSERT INTO `foo` ( `col1`, `col2`, `col3` ) VALUES ( 50.00, \'string\', 25 )',
+                u'INSERT INTO `foo` (`col1`,`col2`,`col3`) VALUES (50.00,\'string\',25)',
 
                 # parameterized sql
-                u'INSERT INTO `foo` ( `col1`, `col2`, `col3` ) VALUES ( %f, %s, %d )',
+                u'INSERT INTO `foo` (`col1`,`col2`,`col3`) VALUES (%f,%s,%d)',
 
                 # values for parameterized sql
                 [50.00, 'string', 25]

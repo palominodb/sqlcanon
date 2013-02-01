@@ -77,6 +77,78 @@ CANONICALIZERS = {
     Token.Literal.String.Symbol: canonicalizer_string_symbol,
 }
 
+def canonicalizer_parenthesis(token):
+    """
+    Canonicalizes parenthesis token.
+
+    Whitespaces are canonicalized to empty string.
+    """
+
+    assert token.is_group()
+
+    normalized = ''
+    parameterized = ''
+    values = []
+
+    #print 'token.ttype = {0}'.format(token.ttype)
+    #print 'type(token) = {0}'.format(type(token))
+    #print 'token.normalized = <{0}>'.format(token.normalized)
+    #print 'child tokens:', token.tokens
+    for child_token in token.tokens:
+        #print 'child_token.ttype = {0}'.format(child_token.ttype)
+        #print 'type(child_token) = {0}'.format(type(child_token))
+        #print 'child_token.normalized = <{0}>'.format(child_token.normalized)
+        #print 'child_token.is_group() = {0}'.format(child_token.is_group())
+        if child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline):
+            c_normalized, c_parameterized, c_values = ('', '', [])
+        else:
+            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+        normalized += c_normalized
+        parameterized += c_parameterized
+        for c_value in c_values:
+            values.append(c_value)
+
+    return (normalized, parameterized, values)
+
+def canonicalizer_identifier_list(token):
+    """
+    Canonicalizes IdentifierList token.
+
+    Whitespaces are canonicalized to empty string.
+    """
+
+    assert token.is_group()
+
+    normalized = ''
+    parameterized = ''
+    values = []
+
+    #print 'token.ttype = {0}'.format(token.ttype)
+    #print 'type(token) = {0}'.format(type(token))
+    #print 'token.normalized = <{0}>'.format(token.normalized)
+    #print 'child tokens:', token.tokens
+    for child_token in token.tokens:
+        #print 'child_token.ttype = {0}'.format(child_token.ttype)
+        #print 'type(child_token) = {0}'.format(type(child_token))
+        #print 'child_token.normalized = <{0}>'.format(child_token.normalized)
+        #print 'child_token.is_group() = {0}'.format(child_token.is_group())
+        if child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline):
+            c_normalized, c_parameterized, c_values = ('', '', [])
+        else:
+            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+        normalized += c_normalized
+        parameterized += c_parameterized
+        for c_value in c_values:
+            values.append(c_value)
+
+    return (normalized, parameterized, values)
+
+CANONICALIZERS_BY_CLASS_TYPE = {
+    sqlparse.sql.Parenthesis: canonicalizer_parenthesis,
+    sqlparse.sql.IdentifierList: canonicalizer_identifier_list
+}
+
+
 def canonicalize_token(token):
     """
     Canonicalize a sql statement token.
@@ -88,12 +160,19 @@ def canonicalize_token(token):
     if token.ttype and CANONICALIZERS.has_key(token.ttype):
         normalized, parameterized, values = CANONICALIZERS[token.ttype](token)
     elif token.is_group():
-        for child_token in token.tokens:
-            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
-            normalized += c_normalized
-            parameterized += c_parameterized
-            for c_value in c_values:
-                values.append(c_value)
+        if CANONICALIZERS_BY_CLASS_TYPE.has_key(type(token)):
+            normalized, parameterized, values = CANONICALIZERS_BY_CLASS_TYPE[type(token)](token)
+        else:
+            #print 'token.ttype = {0}'.format(token.ttype)
+            #print 'type(token) = {0}'.format(type(token))
+            #print 'token.normalized = <{0}>'.format(token.normalized)
+            #print 'child tokens:', token.tokens
+            for child_token in token.tokens:
+                c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+                normalized += c_normalized
+                parameterized += c_parameterized
+                for c_value in c_values:
+                    values.append(c_value)
     else:
         # no assigned canonicalizer for token? use default
         normalized, parameterized, values = canonicalizer_default(token)
@@ -169,7 +248,7 @@ if __name__ == '__main__':
                         parameterized_sql_counts[parameterized_sql] = 1
 
             # show results
-            print 
+            print
             print 'stats:'
             print '=' * 80
             for k, v in parameterized_sql_counts.iteritems():
