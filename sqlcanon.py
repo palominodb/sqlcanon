@@ -136,4 +136,43 @@ def canonicalize_sql(sql):
     return result
 
 if __name__ == '__main__':
-    pass
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--sqlfile', help="process sql statements contained in an sql file")
+    args = parser.parse_args()
+
+    parameterized_sql_counts = {}
+
+    print '#' * 80
+
+    if args.sqlfile:
+        # contents of sqlfile will be one sql statement per line
+
+        try:
+            f = open(args.sqlfile)
+            while True:
+                line = f.readline()
+                if not line:
+                    break
+                line = line.strip()
+                print line
+                ret = canonicalize_sql(line)
+                for data in ret:
+                    if data[2]:
+                        parameterized_sql = data[2]
+                    else:
+                        parameterized_sql = 'UNKNOWN'
+                    if parameterized_sql_counts.has_key(parameterized_sql):
+                        parameterized_sql_counts[parameterized_sql] += 1
+                    else:
+                        parameterized_sql_counts[parameterized_sql] = 1
+
+            # show results
+            print 
+            print 'stats:'
+            print '=' * 80
+            for k, v in parameterized_sql_counts.iteritems():
+                print '{0} {1}'.format(v, k)
+        except Exception, e:
+            print 'An error has occurred: {0}'.format(e)
