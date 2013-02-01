@@ -1,63 +1,139 @@
-import re
+#!/usr/bin/env python
+import sqlparse
+from sqlparse.tokens import Token
+
+def canonicalizer_default(token):
+    """
+    Default canonicalizer.
+
+    Returns data in this format (normalized sql, paramtererized sql, values)
+    """
+    return (token.normalized, token.normalized, [])
+
+def canonicalizer_whitespace(token):
+    """
+    Reduces whitespaces into a single space.
+
+    Returns data in this format (normalized sql, paramtererized sql, values)
+    """
+    return (' ', ' ', [])
+
+def canonicalizer_name(token):
+    """
+    Quotes names always.
+    """
+
+    normalized = '`{0}`'.format(token.normalized.strip(' `'))
+    return (normalized, normalized, [])
+
+def canonicalizer_number_integer(token):
+    """
+    Canonicalizes integer numbers.
+    """
+
+    normalized = token.normalized
+    parameterized = '%d'
+    values = [int(token.value)]
+    return (normalized, parameterized, values)
+
+def canonicalizer_number_float(token):
+    """
+    Canonicalizes float numbers.
+    """
+
+    normalized = token.normalized
+    parameterized = '%f'
+    values = [float(token.value)]
+    return (normalized, parameterized, values)
+
+def canonicalizer_string_single(token):
+    """
+    Canonicalizes strings with single quotes.
+    """
+
+    normalized = token.normalized
+    parameterized = '%s'
+    values = [token.value.strip("'")]
+    return (normalized, parameterized, values)
+
+def canonicalizer_string_symbol(token):
+    """
+    Canonicalizes strings with quotes (double).
+    """
+
+    normalized = token.normalized
+    parameterized = '%s'
+    values = [token.value.strip('"')]
+    return (normalized, parameterized, values)
+
+# canonicalizers based on token type
+CANONICALIZERS = {
+    Token.Text.Whitespace: canonicalizer_whitespace,
+    Token.Text.Whitespace.Newline: canonicalizer_whitespace,
+    Token.Name: canonicalizer_name,
+    Token.Literal.Number.Integer: canonicalizer_number_integer,
+    Token.Literal.Number.Float: canonicalizer_number_float,
+    Token.Literal.String.Single: canonicalizer_string_single,
+    Token.Literal.String.Symbol: canonicalizer_string_symbol,
+}
+
+def canonicalize_token(token):
+    """
+    Canonicalize a sql statement token.
+    """
+
+    normalized = ''
+    parameterized = ''
+    values = []
+    if token.ttype and CANONICALIZERS.has_key(token.ttype):
+        normalized, parameterized, values = CANONICALIZERS[token.ttype](token)
+    elif token.is_group():
+        for child_token in token.tokens:
+            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+            normalized += c_normalized
+            parameterized += c_parameterized
+            for c_value in c_values:
+                values.append(c_value)
+    else:
+        # no assigned canonicalizer for token? use default
+        normalized, parameterized, values = canonicalizer_default(token)
+
+    return (normalized, parameterized, values)
 
 def canonicalize_sql(sql):
     """
-    Normalizes whitespace, quoting, and case.
-    Parameterizes sql.
+    Canonicalizes sql statement(s).
 
-    Returns a tuple in this format:
-        (parameterized sql, values)
-
-        values
-            - can be a single value or a tuple
+    Returns a list of (orig sql, canonicalized sql, parameterized sql, values for parameterized sql)
     """
+    result = []
 
-    # try checking for SELECTs first
-    pat = r'^\s*select'
-    m = re.search(pat, sql, re.IGNORECASE)
-    if m:
-        # we have a SELECT statement
+    parsed = sqlparse.parse(sql)
 
-        # sample pattern:
-        #   SELECT * FROM `bob` WHERE `id` = 100
-        pat = r'^\s*select\s+(\*)\s+from\s+`?([^\s`]+)`?\s+where\s+`?([^\s`]+)`?\s*=\s*(\d+)\s*$'
-        m = re.search(pat, sql, re.IGNORECASE)
-        if m:
-            field_list = m.group(1)
-            table_name = m.group(2)
-            where_cond_field = m.group(3)
-            where_cond_val = m.group(4)
-            canon_sql = 'SELECT {0} FROM `{1}` WHERE `{2}` = %d'.format(
-                field_list, table_name, where_cond_field)
-            return (canon_sql, where_cond_val)
+    for stmt in parsed:
+        if stmt.get_type() == 'UNKNOWN':
+            result.append(
+                ('{0}'.format(stmt), None, None, [])
+            )
+            continue
 
-    # TODO: test other patterns here for whitespaces, quotes, case, field list, table list, complex conditions
-    # This project looks interesting and can probably be used to parse more complicated patterns:
-    #   https://github.com/andialbrecht/sqlparse
+        normalized = ''
+        parameterized = ''
+        values = []
+        for token in stmt.tokens:
+            t_normalized, t_parameterized, t_values = canonicalize_token(token)
+            normalized += t_normalized
+            parameterized += t_parameterized
+            for t_value in t_values:
+                values.append(t_value)
 
+        normalized = normalized.strip(' ;')
+        parameterized = parameterized.strip(' ;')
+
+        result.append(
+            ('{0}'.format(stmt), normalized, parameterized, values)
+        )
+    return result
 
 if __name__ == '__main__':
-    # test data
-    sqls = [
-        'select * from abc where id = 1',
-        'select * from def where id = 2',
-        'select * from def where id = 3',
-        'select * from ghi where id = 4',
-    ]
-
-    canon_sqls = {}
-
-    for sql in sqls:
-        ret = canonicalize_sql(sql)
-        if ret:
-            canon_sql, val = ret
-            if canon_sqls.has_key(canon_sql):
-                canon_sqls[canon_sql] = canon_sqls[canon_sql] + 1
-            else:
-                canon_sqls[canon_sql] = 1
-
-    for key in canon_sqls:
-        print 'SQL: {0}'.format(key)
-        print 'Count: {0}'.format(canon_sqls[key])
-        print
-
+    pass

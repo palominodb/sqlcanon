@@ -1,52 +1,88 @@
+#!/usr/bin/env python
 import unittest
 import sqlcanon
 
-
 class CanonicalizeSqlTests(unittest.TestCase):
 
-    CANON_SQL1 = 'SELECT * FROM `bob` WHERE `id` = %d'
-
-    def assert_if_equal_to_canon_sql1(self, sql):
+    def test_canonicalize_sql_1(self):
+        sql = 'select * from foo where id = 1'
         ret = sqlcanon.canonicalize_sql(sql)
-        self.assertIsNotNone(ret, msg='sqlcanon.canonicalize_sql returned None.')
-        if ret:
-            canon_sql, val = ret
-            self.assertEqual(canon_sql, self.CANON_SQL1)
+        expected_ret = [
+            (
+                # original sql
+                sql,
 
-    def test_canonicalize_sql_simple_select_whitespace(self):
-        sql = r'  SELECT   *   FROM   `bob`    WHERE   `id`   =     100   '
-        self.assert_if_equal_to_canon_sql1(sql)
+                # canonicalized sql
+                u'SELECT * FROM `foo` WHERE `id` = 1',
 
-    def test_canonicalize_sql_simple_select_case(self):
-        sql = r'select * From `bob` WheRE `id` = 100'
-        self.assert_if_equal_to_canon_sql1(sql)
+                # parameterized sql
+                u'SELECT * FROM `foo` WHERE `id` = %d',
 
-    def test_canonicalize_sql_simple_select_quoting(self):
-        sql = r'select * from bob where id = 100'
-        self.assert_if_equal_to_canon_sql1(sql)
+                # values for parameterized sql
+                [1]
+            )
+        ]
+        self.assertEqual(ret, expected_ret)
 
-    def test_canonicalize_sql_mixed_whitespace_case_quoting(self):
-        sql = r'  Select  * FrOM  bob   where    `id` =  100  '
-        self.assert_if_equal_to_canon_sql1(sql)
-
-    def test_canonicalize_sql_select_in_1(self):
-        sql = r'select * from `bob` where `id` in (1,2,3)'
-        expected_canon_sql = r'SELECT * FROM `bob` WHERE `id` IN (%d, %d, %d)'
+    def test_canonicalize_sql_2(self):
+        sql = 'select * from foo where id in ( 1, 2, 3 )'
         ret = sqlcanon.canonicalize_sql(sql)
-        self.assertIsNotNone(ret, msg='sqlcanon.canonicalize_sql returned None.')
-        if ret:
-            canon_sql, val = ret
-            self.assertEqual(canon_sql, expected_canon_sql)
+        expected_ret = [
+            (
+                # original sql
+                sql,
 
-    def test_canonicalize_sql_select_in_2(self):
-        sql = r'select * from `bob` where `id` in (3,2,1)'
-        expected_canon_sql = r'SELECT * FROM `bob` WHERE `id` IN (%d, %d, %d)'
+                # canonicalized sql
+                u'SELECT * FROM `foo` WHERE `id` IN ( 1, 2, 3 )',
+
+                # parameterized sql
+                u'SELECT * FROM `foo` WHERE `id` IN ( %d, %d, %d )',
+
+                # values for parameterized sql
+                [1, 2, 3]
+            )
+        ]
+        self.assertEqual(ret, expected_ret)
+
+    def test_canonicalize_sql_3(self):
+        sql = 'insert into bar values ( \'string\', 25, 50.00 )'
         ret = sqlcanon.canonicalize_sql(sql)
-        self.assertIsNotNone(ret, msg='sqlcanon.canonicalize_sql returned None.')
-        if ret:
-            canon_sql, val = ret
-            self.assertEqual(canon_sql, expected_canon_sql)
+        expected_ret = [
+            (
+                # original sql
+                sql,
 
+                # canonicalized sql
+                u'INSERT INTO `bar` VALUES ( \'string\', 25, 50.00 )',
+
+                # parameterized sql
+                u'INSERT INTO `bar` VALUES ( %s, %d, %f )',
+
+                # values for parameterized sql
+                ['string', 25, 50.00]
+            )
+        ]
+        self.assertEqual(ret, expected_ret)
+
+    def test_canonicalize_sql_4(self):
+        sql = 'insert into foo ( col1, col2, col3 ) values ( 50.00, \'string\', 25 )'
+        ret = sqlcanon.canonicalize_sql(sql)
+        expected_ret = [
+            (
+                # original sql
+                sql,
+
+                # canonicalized sql
+                u'INSERT INTO `foo` ( `col1`, `col2`, `col3` ) VALUES ( 50.00, \'string\', 25 )',
+
+                # parameterized sql
+                u'INSERT INTO `foo` ( `col1`, `col2`, `col3` ) VALUES ( %f, %s, %d )',
+
+                # values for parameterized sql
+                [50.00, 'string', 25]
+            )
+        ]
+        self.assertEqual(ret, expected_ret)
 
 if __name__ == '__main__':
     unittest.main()
