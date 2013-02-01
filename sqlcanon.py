@@ -53,17 +53,20 @@ def canonicalizer_string_single(token):
 
     normalized = token.normalized
     parameterized = '%s'
-    values = [token.value.strip("'")]
+    values = [token.value.strip("'").replace(r"\'", "'")]
     return (normalized, parameterized, values)
 
 def canonicalizer_string_symbol(token):
     """
     Canonicalizes strings with quotes (double).
+
+    Turns enclosing double quotes to single quotes.
+    Replaces content: \" to "
     """
 
-    normalized = token.normalized
+    normalized = r"""'{0}'""".format(token.normalized.strip('"').replace(r'\"', '"'))
     parameterized = '%s'
-    values = [token.value.strip('"')]
+    values = [token.value.strip('"').replace(r'\"', '"')]
     return (normalized, parameterized, values)
 
 # canonicalizers based on token type

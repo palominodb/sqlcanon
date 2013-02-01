@@ -84,5 +84,26 @@ class CanonicalizeSqlTests(unittest.TestCase):
         ]
         self.assertEqual(ret, expected_ret)
 
+    def test_canonicalize_sql_5(self):
+        self.maxDiff = None
+        sql = r"""insert into foo.bar ( a, b , c) values ( 'ab\'c' ,  "d\"ef"  , 'ghi'  )"""
+        ret = sqlcanon.canonicalize_sql(sql)
+        expected_ret = [
+            (
+                # original sql
+                sql,
+
+                # canonicalized sql
+                ur"""INSERT INTO `foo`.`bar` (`a`,`b`,`c`) VALUES ('ab\'c','d"ef','ghi')""",
+
+                # parameterized sql
+                ur'INSERT INTO `foo`.`bar` (`a`,`b`,`c`) VALUES (%s,%s,%s)',
+
+                # values for parameterized sql
+                ["ab'c", 'd"ef', 'ghi']
+            )
+        ]
+        self.assertEqual(ret, expected_ret)
+
 if __name__ == '__main__':
     unittest.main()
