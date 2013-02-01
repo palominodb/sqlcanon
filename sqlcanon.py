@@ -143,9 +143,43 @@ def canonicalizer_identifier_list(token):
 
     return (normalized, parameterized, values)
 
+def canonicalizer_comparison(token):
+    """
+    Canonicalizes Comparison token.
+
+    Whitespaces are canonicalized to empty string.
+    """
+
+    assert token.is_group()
+
+    normalized = ''
+    parameterized = ''
+    values = []
+
+    #print 'token.ttype = {0}'.format(token.ttype)
+    #print 'type(token) = {0}'.format(type(token))
+    #print 'token.normalized = <{0}>'.format(token.normalized)
+    #print 'child tokens:', token.tokens
+    for child_token in token.tokens:
+        #print 'child_token.ttype = {0}'.format(child_token.ttype)
+        #print 'type(child_token) = {0}'.format(type(child_token))
+        #print 'child_token.normalized = <{0}>'.format(child_token.normalized)
+        #print 'child_token.is_group() = {0}'.format(child_token.is_group())
+        if child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline):
+            c_normalized, c_parameterized, c_values = ('', '', [])
+        else:
+            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+        normalized += c_normalized
+        parameterized += c_parameterized
+        for c_value in c_values:
+            values.append(c_value)
+
+    return (normalized, parameterized, values)
+
 CANONICALIZERS_BY_CLASS_TYPE = {
     sqlparse.sql.Parenthesis: canonicalizer_parenthesis,
-    sqlparse.sql.IdentifierList: canonicalizer_identifier_list
+    sqlparse.sql.IdentifierList: canonicalizer_identifier_list,
+    sqlparse.sql.Comparison: canonicalizer_comparison
 }
 
 
