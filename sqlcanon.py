@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import re
 import sqlparse
 from sqlparse.tokens import Token
 
@@ -191,6 +192,11 @@ def canonicalize_token(token):
     Canonicalize a sql statement token.
     """
 
+    print 'token.ttype = {0}'.format(token.ttype)
+    print 'type(token) = {0}'.format(type(token))
+    print 'token.normalized = <{0}>'.format(token.normalized)
+    print 'child tokens: {0}'.format(token.tokens if token.is_group() else None)
+
     normalized = ''
     parameterized = ''
     values = []
@@ -200,10 +206,6 @@ def canonicalize_token(token):
         if CANONICALIZERS_BY_CLASS_TYPE.has_key(type(token)):
             normalized, parameterized, values = CANONICALIZERS_BY_CLASS_TYPE[type(token)](token)
         else:
-            #print 'token.ttype = {0}'.format(token.ttype)
-            #print 'type(token) = {0}'.format(type(token))
-            #print 'token.normalized = <{0}>'.format(token.normalized)
-            #print 'child tokens:', token.tokens
             for child_token in token.tokens:
                 c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
                 normalized += c_normalized
@@ -227,6 +229,8 @@ def canonicalize_sql(sql):
     parsed = sqlparse.parse(sql)
 
     for stmt in parsed:
+        print 'stmt => {0} <='.format(stmt)
+        print 'stmt.tokens => {0}'.format(stmt.tokens)
         if stmt.get_type() == 'UNKNOWN':
             result.append(
                 ('{0}'.format(stmt), None, None, [])
@@ -255,24 +259,27 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--sqlfile', help="process sql statements contained in an sql file")
+    parser.add_argument('--sql_file', help='process sql statements contained in an sql file')
+    parser.add_argument('--mysql_log_file', help='process queries from mysql general log file')
     args = parser.parse_args()
 
     parameterized_sql_counts = {}
 
-    print '#' * 80
+    show_results = False
 
-    if args.sqlfile:
+    if args.sql_file:
         # contents of sqlfile will be one sql statement per line
 
         try:
-            f = open(args.sqlfile)
+            line_count = 0
+            f = open(args.sql_file)
             while True:
                 line = f.readline()
                 if not line:
                     break
                 line = line.strip()
-                print line
+                line_count += 1
+                print '{0}. {1}'.format(line_count, line)
                 ret = canonicalize_sql(line)
                 for data in ret:
                     if data[2]:
@@ -283,12 +290,77 @@ if __name__ == '__main__':
                         parameterized_sql_counts[parameterized_sql] += 1
                     else:
                         parameterized_sql_counts[parameterized_sql] = 1
-
-            # show results
-            print
-            print 'stats:'
-            print '=' * 80
-            for k, v in parameterized_sql_counts.iteritems():
-                print '{0} {1}'.format(v, k)
+            f.close()
+            show_results = True
         except Exception, e:
             print 'An error has occurred: {0}'.format(e)
+
+    if args.mysql_log_file:
+
+        try:
+            f = open(args.mysql_log_file)
+            line = ''
+            lines_to_parse = ''
+            parse_now = False
+            exit_loop = False
+            query_count = 0
+            while True:
+                if parse_now:
+                    # search for query embedded in lines
+                    #pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)(?=((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\s)'
+                    pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))'
+                    match = re.search(pat, lines_to_parse)
+                    if match:
+                        print 'lines_to_parse => {0}'.format(lines_to_parse)
+                        query = match.group('query')
+                        print 'query => {0}'.format(query)
+                        query_count += 1
+                        print '{0}. {1}'.format(query_count, query)
+                        ret = canonicalize_sql(query)
+                        for data in ret:
+                            if data[2]:
+                                parameterized_sql = data[2]
+                            else:
+                                parameterized_sql = 'UNKNOWN'
+                            if parameterized_sql_counts.has_key(parameterized_sql):
+                                parameterized_sql_counts[parameterized_sql] += 1
+                            else:
+                                parameterized_sql_counts[parameterized_sql] = 1
+                    parse_now = False
+                    lines_to_parse = line if line else ''
+                    if exit_loop:
+                        break
+                line = f.readline()
+                if not line:
+                    # end of file, parse lines not yet parsed if present before exiting loop
+                    if lines_to_parse:
+                        parse_now = True
+                        exit_loop = True
+                        continue
+                    break
+                else:
+                    # check this line has the start of a query
+                    pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+'
+                    match = re.search(pat, line)
+                    if match:
+                        # found match, do we have unparsed lines?
+                        # if yes, parse them now,
+                        # then set lines_to_parse = line
+                        parse_now = True
+                        continue
+                    else:
+                        lines_to_parse += line
+
+            f.close()
+            show_results = True
+        except Exception, e:
+            print 'An error has occurred: {0}'.format(e)
+
+    if show_results:
+        print
+        print 'stats:'
+        print '=' * 80
+        item_count = 0
+        for k, v in parameterized_sql_counts.iteritems():
+            item_count += 1
+            print '{0}. {1} - {2}'.format(item_count, v, k)
