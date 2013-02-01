@@ -24,7 +24,10 @@ def canonicalizer_name(token):
     Quotes names always.
     """
 
-    normalized = '`{0}`'.format(token.normalized.strip(' `'))
+    if token.normalized.startswith('@'):
+        normalized = token.normalized
+    else:
+        normalized = '`{0}`'.format(token.normalized.strip(' `'))
     return (normalized, normalized, [])
 
 def canonicalizer_number_integer(token):
