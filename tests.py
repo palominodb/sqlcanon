@@ -29,16 +29,9 @@ class CanonicalizeSqlTests(unittest.TestCase):
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [
             (
-                # original sql
                 sql,
-
-                # canonicalized sql
                 u'SELECT * FROM `foo` WHERE `id` IN (1,2,3)',
-
-                # parameterized sql
                 u'SELECT * FROM `foo` WHERE `id` IN (%d,%d,%d)',
-
-                # values for parameterized sql
                 [1, 2, 3]
             )
         ]
@@ -49,16 +42,9 @@ class CanonicalizeSqlTests(unittest.TestCase):
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [
             (
-                # original sql
                 sql,
-
-                # canonicalized sql
                 u'INSERT INTO `bar` VALUES (\'string\',25,50.00)',
-
-                # parameterized sql
                 u'INSERT INTO `bar` VALUES (%s,%d,%f)',
-
-                # values for parameterized sql
                 ['string', 25, 50.00]
             )
         ]
@@ -69,16 +55,9 @@ class CanonicalizeSqlTests(unittest.TestCase):
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [
             (
-                # original sql
                 sql,
-
-                # canonicalized sql
-                u'INSERT INTO `foo` (`col1`,`col2`,`col3`) VALUES (50.00,\'string\',25)',
-
-                # parameterized sql
-                u'INSERT INTO `foo` (`col1`,`col2`,`col3`) VALUES (%f,%s,%d)',
-
-                # values for parameterized sql
+                u'INSERT INTO foo(`col1`,`col2`,`col3`) VALUES (50.00,\'string\',25)',
+                u'INSERT INTO foo(`col1`,`col2`,`col3`) VALUES (%f,%s,%d)',
                 [50.00, 'string', 25]
             )
         ]
@@ -90,16 +69,9 @@ class CanonicalizeSqlTests(unittest.TestCase):
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [
             (
-                # original sql
                 sql,
-
-                # canonicalized sql
-                ur"""INSERT INTO `foo`.`bar` (`a`,`b`,`c`) VALUES ('ab\'c','d"ef','ghi')""",
-
-                # parameterized sql
-                ur'INSERT INTO `foo`.`bar` (`a`,`b`,`c`) VALUES (%s,%s,%s)',
-
-                # values for parameterized sql
+                ur"""INSERT INTO `foo`.bar(`a`,`b`,`c`) VALUES ('ab\'c','d"ef','ghi')""",
+                ur'INSERT INTO `foo`.bar(`a`,`b`,`c`) VALUES (%s,%s,%s)',
                 ["ab'c", 'd"ef', 'ghi']
             )
         ]

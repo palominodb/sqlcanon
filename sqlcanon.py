@@ -97,15 +97,7 @@ def canonicalizer_parenthesis(token):
     parameterized = ''
     values = []
 
-    #print 'token.ttype = {0}'.format(token.ttype)
-    #print 'type(token) = {0}'.format(type(token))
-    #print 'token.normalized = <{0}>'.format(token.normalized)
-    #print 'child tokens:', token.tokens
     for child_token in token.tokens:
-        #print 'child_token.ttype = {0}'.format(child_token.ttype)
-        #print 'type(child_token) = {0}'.format(type(child_token))
-        #print 'child_token.normalized = <{0}>'.format(child_token.normalized)
-        #print 'child_token.is_group() = {0}'.format(child_token.is_group())
         if child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline):
             c_normalized, c_parameterized, c_values = ('', '', [])
         else:
@@ -130,15 +122,7 @@ def canonicalizer_identifier_list(token):
     parameterized = ''
     values = []
 
-    #print 'token.ttype = {0}'.format(token.ttype)
-    #print 'type(token) = {0}'.format(type(token))
-    #print 'token.normalized = <{0}>'.format(token.normalized)
-    #print 'child tokens:', token.tokens
     for child_token in token.tokens:
-        #print 'child_token.ttype = {0}'.format(child_token.ttype)
-        #print 'type(child_token) = {0}'.format(type(child_token))
-        #print 'child_token.normalized = <{0}>'.format(child_token.normalized)
-        #print 'child_token.is_group() = {0}'.format(child_token.is_group())
         if child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline):
             c_normalized, c_parameterized, c_values = ('', '', [])
         else:
@@ -163,15 +147,7 @@ def canonicalizer_comparison(token):
     parameterized = ''
     values = []
 
-    #print 'token.ttype = {0}'.format(token.ttype)
-    #print 'type(token) = {0}'.format(type(token))
-    #print 'token.normalized = <{0}>'.format(token.normalized)
-    #print 'child tokens:', token.tokens
     for child_token in token.tokens:
-        #print 'child_token.ttype = {0}'.format(child_token.ttype)
-        #print 'type(child_token) = {0}'.format(type(child_token))
-        #print 'child_token.normalized = <{0}>'.format(child_token.normalized)
-        #print 'child_token.is_group() = {0}'.format(child_token.is_group())
         if child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline):
             c_normalized, c_parameterized, c_values = ('', '', [])
         else:
@@ -298,12 +274,107 @@ def canonicalize_sql(sql):
         )
     return result
 
+def process_mysql_log_file(mysql_log_file):
+    """
+    Processes contents of log file (mysql general log file format).
+    """
+
+    counts = {}
+    f = open(mysql_log_file)
+    try:
+        line = ''
+        lines_to_parse = ''
+        parse_now = False
+        exit_loop = False
+        query_count = 0
+        while True:
+            if parse_now:
+                # search for query embedded in lines
+                pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))'
+                match = re.search(pat, lines_to_parse)
+                if match:
+                    print 'lines_to_parse => {0}'.format(lines_to_parse)
+                    query = match.group('query')
+                    print 'query => {0}'.format(query)
+                    query_count += 1
+                    print '{0}. {1}'.format(query_count, query)
+                    ret = canonicalize_sql(query)
+                    for data in ret:
+                        if data[2]:
+                            parameterized_sql = data[2]
+                        else:
+                            parameterized_sql = 'UNKNOWN'
+                        if counts.has_key(parameterized_sql):
+                            counts[parameterized_sql] += 1
+                        else:
+                            counts[parameterized_sql] = 1
+                parse_now = False
+                lines_to_parse = line if line else ''
+                if exit_loop:
+                    break
+            line = f.readline()
+            if not line:
+                # end of file, parse lines not yet parsed if present before exiting loop
+                if lines_to_parse:
+                    parse_now = True
+                    exit_loop = True
+                    continue
+                break
+            else:
+                # check this line has the start of a query
+                pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+'
+                match = re.search(pat, line)
+                if match:
+                    # found match, do we have unparsed lines?
+                    # if yes, parse them now,
+                    # then set lines_to_parse = line
+                    parse_now = True
+                    continue
+                else:
+                    lines_to_parse += line
+    except Exception, e:
+        print 'An error has occurred: {0}'.format(e)
+    f.close()
+    return counts
+
+def process_sql_file(sql_file):
+    """
+    Processes contents of an sql file.
+    One sql statement per line is assumged.
+    """
+
+    counts = {}
+    f = open(sql_file)
+    try:
+        line_count = 0
+        while True:
+            line = f.readline()
+            if not line:
+                break
+            line = line.strip()
+            line_count += 1
+            print '{0}. {1}'.format(line_count, line)
+            ret = canonicalize_sql(line)
+            for data in ret:
+                if data[2]:
+                    parameterized_sql = data[2]
+                else:
+                    parameterized_sql = 'UNKNOWN'
+                if counts.has_key(parameterized_sql):
+                    counts[parameterized_sql] += 1
+                else:
+                    counts[parameterized_sql] = 1
+    except Exception, e:
+        print 'An error has occurred: {0}'.format(e)
+    f.close()
+    return counts
+
 if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--sql_file', help='process sql statements contained in an sql file')
-    parser.add_argument('--mysql_log_file', help='process queries from mysql general log file')
+    parser.add_argument('--sql_file', help='process sql statements contained in an sql file (one statement per line)')
+    parser.add_argument('--mysql_log_file', help='process queries from a mysql log file (mysql general log file format)')
     args = parser.parse_args()
 
     parameterized_sql_counts = {}
@@ -311,29 +382,10 @@ if __name__ == '__main__':
     show_results = False
 
     if args.sql_file:
-        # contents of sqlfile will be one sql statement per line
+        # contents of sql file will be one sql statement per line
 
         try:
-            line_count = 0
-            f = open(args.sql_file)
-            while True:
-                line = f.readline()
-                if not line:
-                    break
-                line = line.strip()
-                line_count += 1
-                print '{0}. {1}'.format(line_count, line)
-                ret = canonicalize_sql(line)
-                for data in ret:
-                    if data[2]:
-                        parameterized_sql = data[2]
-                    else:
-                        parameterized_sql = 'UNKNOWN'
-                    if parameterized_sql_counts.has_key(parameterized_sql):
-                        parameterized_sql_counts[parameterized_sql] += 1
-                    else:
-                        parameterized_sql_counts[parameterized_sql] = 1
-            f.close()
+            parameterized_sql_counts = process_sql_file(args.sql_file)
             show_results = True
         except Exception, e:
             print 'An error has occurred: {0}'.format(e)
@@ -341,60 +393,7 @@ if __name__ == '__main__':
     if args.mysql_log_file:
 
         try:
-            f = open(args.mysql_log_file)
-            line = ''
-            lines_to_parse = ''
-            parse_now = False
-            exit_loop = False
-            query_count = 0
-            while True:
-                if parse_now:
-                    # search for query embedded in lines
-                    #pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)(?=((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\s)'
-                    pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))'
-                    match = re.search(pat, lines_to_parse)
-                    if match:
-                        print 'lines_to_parse => {0}'.format(lines_to_parse)
-                        query = match.group('query')
-                        print 'query => {0}'.format(query)
-                        query_count += 1
-                        print '{0}. {1}'.format(query_count, query)
-                        ret = canonicalize_sql(query)
-                        for data in ret:
-                            if data[2]:
-                                parameterized_sql = data[2]
-                            else:
-                                parameterized_sql = 'UNKNOWN'
-                            if parameterized_sql_counts.has_key(parameterized_sql):
-                                parameterized_sql_counts[parameterized_sql] += 1
-                            else:
-                                parameterized_sql_counts[parameterized_sql] = 1
-                    parse_now = False
-                    lines_to_parse = line if line else ''
-                    if exit_loop:
-                        break
-                line = f.readline()
-                if not line:
-                    # end of file, parse lines not yet parsed if present before exiting loop
-                    if lines_to_parse:
-                        parse_now = True
-                        exit_loop = True
-                        continue
-                    break
-                else:
-                    # check this line has the start of a query
-                    pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+'
-                    match = re.search(pat, line)
-                    if match:
-                        # found match, do we have unparsed lines?
-                        # if yes, parse them now,
-                        # then set lines_to_parse = line
-                        parse_now = True
-                        continue
-                    else:
-                        lines_to_parse += line
-
-            f.close()
+            parameterized_sql_counts = process_mysql_log_file(args.mysql_log_file)
             show_results = True
         except Exception, e:
             print 'An error has occurred: {0}'.format(e)
