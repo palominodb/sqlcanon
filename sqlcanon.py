@@ -99,7 +99,15 @@ def canonicalizer_parenthesis(token):
 
     for child_token in token.tokens:
         if child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline):
-            c_normalized, c_parameterized, c_values = ('', '', [])
+            child_token_index = token.token_index(child_token)
+            next_child_token = token.token_next(child_token_index, skip_ws=False)
+            prev_child_token = token.token_prev(child_token_index, skip_ws=False)
+            if ((prev_child_token and prev_child_token.ttype in (Token.Keyword,)) or
+                (next_child_token and next_child_token.ttype in (Token.Keyword,))):
+                # maintain a single space if previous or next token is a keyword
+                c_normalized, c_parameterized, c_values = (' ', ' ', [])
+            else:
+                c_normalized, c_parameterized, c_values = ('', '', [])
         else:
             c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
         normalized += c_normalized
@@ -371,6 +379,8 @@ def process_sql_file(sql_file):
 
 if __name__ == '__main__':
     import argparse
+
+    print '#### sqlcanon: start ####\n'
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--sql_file', help='process sql statements contained in an sql file (one statement per line)')
