@@ -268,7 +268,14 @@ def canonicalize_sql(sql):
         parameterized = ''
         values = []
         for token in stmt.tokens:
-            t_normalized, t_parameterized, t_values = canonicalize_token(token)
+            token_index = stmt.token_index(token)
+            next_token = stmt.token_next(token_index, skip_ws=False)
+            if (token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline) and
+                next_token and
+                next_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline)):
+                t_normalized, t_parameterized, t_values = ('', '', [])
+            else:
+                t_normalized, t_parameterized, t_values = canonicalize_token(token)
             normalized += t_normalized
             parameterized += t_parameterized
             for t_value in t_values:
