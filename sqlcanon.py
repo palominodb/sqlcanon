@@ -183,10 +183,49 @@ def canonicalizer_comparison(token):
 
     return (normalized, parameterized, values)
 
+SQL_FUNCTIONS = ('AVG', 'BIT_AND', 'BIT_OR', 'BIT_XOR', 'COUNT', 'GROUP_CONCAT',
+    'MAX', 'MIN', 'STD', 'STDDEV_POP', 'STDDEV_SAMP', 'STDDEV', 'SUM',
+    'VAR_POP', 'VAR_SAMP', 'VARIANCE', )
+
+def canonicalizer_function(token):
+    """
+    Canonicalizes Function token.
+
+    Identifier part is checked and if it is one of the SQL functions
+    like COUNT, it is converted to uppercase and not quoted.
+    Whitespaces are canonicalized to empty string.
+    """
+    print 'canonicalizer_function'
+    assert token.is_group()
+
+    normalized = ''
+    parameterized = ''
+    values = []
+
+    for child_token in token.tokens:
+        if type(child_token) is sqlparse.sql.Identifier:
+            name = child_token.normalized
+            if name.upper() in SQL_FUNCTIONS:
+                c_normalized, c_parameterized, c_values = (
+                    name.upper(), name.upper(), [])
+            else:
+                c_normalized, c_parameterized, c_values = (name, name, [])
+        elif child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline):
+            c_normalized, c_parameterized, c_values = ('', '', [])
+        else:
+            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+        normalized += c_normalized
+        parameterized += c_parameterized
+        for c_value in c_values:
+            values.append(c_value)
+
+    return (normalized, parameterized, values)
+
 CANONICALIZERS_BY_CLASS_TYPE = {
     sqlparse.sql.Parenthesis: canonicalizer_parenthesis,
     sqlparse.sql.IdentifierList: canonicalizer_identifier_list,
-    sqlparse.sql.Comparison: canonicalizer_comparison
+    sqlparse.sql.Comparison: canonicalizer_comparison,
+    sqlparse.sql.Function: canonicalizer_function
 }
 
 
@@ -235,6 +274,7 @@ def canonicalize_sql(sql):
         print 'stmt => {0} <='.format(stmt)
         print 'stmt.tokens => {0}'.format(stmt.tokens)
         if stmt.get_type() == 'UNKNOWN':
+            print 'UNKNOWN: => {0} <='.format(stmt)
             result.append(
                 ('{0}'.format(stmt), None, None, [])
             )
