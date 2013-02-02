@@ -120,5 +120,35 @@ class CanonicalizeSqlTests(unittest.TestCase):
             )]
         self.assertEqual(ret, expected_ret)
 
+    def test_canonicalize_sql_7(self):
+        self.maxDiff = None
+        sql = r"""
+            select
+                t1.c1 ,
+                t2.c1
+            from
+                t1 ,
+                t2
+            where
+                t1.id  =  t2.id
+                and
+                (
+                    t1.id   =   1
+                    or
+                    t1.id   =   2
+                )
+                and
+                t1.c1   >   5
+
+            """
+        ret = sqlcanon.canonicalize_sql(sql)
+        expected_ret = [(
+            sql,
+            u"SELECT `t1`.`c1`,`t2`.`c1` FROM `t1`,`t2` WHERE `t1`.`id`=`t2`.`id` AND (`t1`.`id`=1 OR `t1`.`id`=2) AND `t1`.`c1`>5",
+            u"SELECT `t1`.`c1`,`t2`.`c1` FROM `t1`,`t2` WHERE `t1`.`id`=`t2`.`id` AND (`t1`.`id`=%d OR `t1`.`id`=%d) AND `t1`.`c1`>%d",
+            [1, 2, 5]
+            )]
+        self.assertEqual(ret, expected_ret)
+
 if __name__ == '__main__':
     unittest.main()

@@ -132,9 +132,14 @@ def canonicalizer_where(token):
     for child_token in token.tokens:
         child_token_index = token.token_index(child_token)
         next_child_token = token.token_next(child_token_index, skip_ws=False)
+        next_nonws_token = token.token_next(child_token_index)
+        prev_nonws_token = token.token_prev(child_token_index)
         if (child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline) and
-            next_child_token and
-            next_child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline)):
+            (
+                (next_child_token and next_child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline)) or
+                (next_nonws_token and next_nonws_token.ttype in (Token.Operator.Comparison,)) or
+                (prev_nonws_token and prev_nonws_token.ttype in (Token.Operator.Comparison,))
+            )):
                 c_normalized, c_parameterized, c_values = ('', '', [])
         else:
             c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
