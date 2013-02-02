@@ -427,8 +427,10 @@ if __name__ == '__main__':
     print '#### sqlcanon: start ####\n'
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--sql_file', help='process sql statements contained in an sql file (one statement per line)')
-    parser.add_argument('--mysql_log_file', help='process queries from a mysql log file (mysql general log file format)')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--sql_file', help='process sql statements contained in an sql file (one statement per line)')
+    group.add_argument('--mysql_log_file', help='process queries from a mysql log file (mysql general log file format)')
+
     args = parser.parse_args()
 
     parameterized_sql_counts = {}
@@ -458,5 +460,11 @@ if __name__ == '__main__':
         print '=' * 80
         item_count = 0
         for k, v in parameterized_sql_counts.iteritems():
+            if k != 'UNKNOWN':
+                item_count += 1
+                print '{0}. {1} - {2}'.format(item_count, v, k)
+
+        if parameterized_sql_counts.has_key('UNKNOWN'):
+            unknown_count = parameterized_sql_counts['UNKNOWN']
             item_count += 1
-            print '{0}. {1} - {2}'.format(item_count, v, k)
+            print '{0}. {1} - {2}'.format(item_count, unknown_count, 'UNKNOWN')
