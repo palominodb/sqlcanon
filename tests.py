@@ -120,7 +120,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
             )]
         self.assertEqual(ret, expected_ret)
 
-    def test_canonicalize_sql_7(self):
+    def test_canonicalize_sql_8(self):
         self.maxDiff = None
         sql = r"""
             select
@@ -147,6 +147,18 @@ class CanonicalizeSqlTests(unittest.TestCase):
             u"SELECT `t1`.`c1`,`t2`.`c1` FROM `t1`,`t2` WHERE `t1`.`id`=`t2`.`id` AND (`t1`.`id`=1 OR `t1`.`id`=2) AND `t1`.`c1`>5",
             u"SELECT `t1`.`c1`,`t2`.`c1` FROM `t1`,`t2` WHERE `t1`.`id`=`t2`.`id` AND (`t1`.`id`=%d OR `t1`.`id`=%d) AND `t1`.`c1`>%d",
             [1, 2, 5]
+            )]
+        self.assertEqual(ret, expected_ret)
+
+    def test_canonicalize_sql_9(self):
+        self.maxDiff = None
+        sql = r'select @@version_comment  limit  1'
+        ret = sqlcanon.canonicalize_sql(sql)
+        expected_ret = [(
+            sql,
+            u"SELECT @@version_comment LIMIT 1",
+            u"SELECT @@version_comment LIMIT %d",
+            [1]
             )]
         self.assertEqual(ret, expected_ret)
 

@@ -304,10 +304,13 @@ def canonicalize_sql(sql):
         for token in stmt.tokens:
             token_index = stmt.token_index(token)
             next_token = stmt.token_next(token_index, skip_ws=False)
+            prev_token = stmt.token_prev(token_index, skip_ws=False)
             if (token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline) and
                 next_token and
                 next_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline)):
                 t_normalized, t_parameterized, t_values = ('', '', [])
+            elif (type(token) is sqlparse.sql.Identifier) and prev_token.ttype in (Token.Operator,):
+                t_normalized, t_parameterized, t_values = (token.normalized, token.normalized, [])
             else:
                 t_normalized, t_parameterized, t_values = canonicalize_token(token)
             normalized += t_normalized
