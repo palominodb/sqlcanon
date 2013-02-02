@@ -105,7 +105,7 @@ def canonicalizer_parenthesis(token):
             if ((prev_child_token and prev_child_token.ttype in (Token.Keyword,)) or
                 (next_child_token and next_child_token.ttype in (Token.Keyword,))):
                 # maintain a single space if previous or next token is a keyword
-                c_normalized, c_parameterized, c_values = (' ', ' ', [])
+                c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
             else:
                 c_normalized, c_parameterized, c_values = ('', '', [])
         else:
