@@ -117,6 +117,34 @@ def canonicalizer_parenthesis(token):
 
     return (normalized, parameterized, values)
 
+def canonicalizer_where(token):
+    """
+    Canonicalizes where clause.
+
+    Consecutive whitespaces are reduced to one.
+    """
+
+    assert token.is_group()
+
+    normalized = ''
+    parameterized = ''
+    values = []
+    for child_token in token.tokens:
+        child_token_index = token.token_index(child_token)
+        next_child_token = token.token_next(child_token_index, skip_ws=False)
+        if (child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline) and
+            next_child_token and
+            next_child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline)):
+                c_normalized, c_parameterized, c_values = ('', '', [])
+        else:
+            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+        normalized += c_normalized
+        parameterized += c_parameterized
+        for c_value in c_values:
+            values.append(c_value)
+
+    return (normalized, parameterized, values)
+
 def canonicalizer_identifier_list(token):
     """
     Canonicalizes IdentifierList token.
@@ -209,7 +237,8 @@ CANONICALIZERS_BY_CLASS_TYPE = {
     sqlparse.sql.Parenthesis: canonicalizer_parenthesis,
     sqlparse.sql.IdentifierList: canonicalizer_identifier_list,
     sqlparse.sql.Comparison: canonicalizer_comparison,
-    sqlparse.sql.Function: canonicalizer_function
+    sqlparse.sql.Function: canonicalizer_function,
+    sqlparse.sql.Where: canonicalizer_where,
 }
 
 
