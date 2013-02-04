@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from sys import stdin
 import re
 import sqlparse
 from sqlparse.tokens import Token
@@ -421,6 +422,68 @@ def process_sql_file(sql_file):
     f.close()
     return counts
 
+def process_data_from_stdin():
+    """
+    Processes sql from stdin.
+    """
+
+    counts = {}
+    try:
+        line = ''
+        lines_to_parse = ''
+        parse_now = False
+        exit_loop = False
+        query_count = 0
+        while True:
+            if parse_now:
+                # search for query embedded in lines
+                pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))'
+                match = re.search(pat, lines_to_parse)
+                if match:
+                    print 'lines_to_parse => {0}'.format(lines_to_parse)
+                    query = match.group('query')
+                    print 'query => {0}'.format(query)
+                    query_count += 1
+                    print '{0}. {1}'.format(query_count, query)
+                    ret = canonicalize_sql(query)
+                    for data in ret:
+                        if data[2]:
+                            parameterized_sql = data[2]
+                        else:
+                            parameterized_sql = 'UNKNOWN'
+                        if counts.has_key(parameterized_sql):
+                            counts[parameterized_sql] += 1
+                        else:
+                            counts[parameterized_sql] = 1
+                parse_now = False
+                lines_to_parse = line if line else ''
+                if exit_loop:
+                    break
+            line = stdin.readline()
+            if not line:
+                # end of file, parse lines not yet parsed if present before exiting loop
+                if lines_to_parse:
+                    parse_now = True
+                    exit_loop = True
+                    continue
+                break
+            else:
+                # check this line has the start of a query
+                pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+'
+                match = re.search(pat, line)
+                if match:
+                    # found match, do we have unparsed lines?
+                    # if yes, parse them now,
+                    # then set lines_to_parse = line
+                    parse_now = True
+                    continue
+                else:
+                    lines_to_parse += line
+    except Exception, e:
+        print 'An error has occurred: {0}'.format(e)
+    return counts
+
+
 if __name__ == '__main__':
     import argparse
 
@@ -446,10 +509,18 @@ if __name__ == '__main__':
         except Exception, e:
             print 'An error has occurred: {0}'.format(e)
 
-    if args.mysql_log_file:
+    elif args.mysql_log_file:
 
         try:
             parameterized_sql_counts = process_mysql_log_file(args.mysql_log_file)
+            show_results = True
+        except Exception, e:
+            print 'An error has occurred: {0}'.format(e)
+
+    else:
+        # read from pipe
+        try:
+            parameterized_sql_counts = process_data_from_stdin()
             show_results = True
         except Exception, e:
             print 'An error has occurred: {0}'.format(e)
