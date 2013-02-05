@@ -6,7 +6,9 @@ import re
 import sqlparse
 from sqlparse.tokens import Token
 
-
+# settings
+# collapse target parts (for now target parts are in and values)
+collapse_target_parts = True
 
 def canonicalizer_default(token):
     """
@@ -283,6 +285,66 @@ def canonicalize_token(token):
 
     return (normalized, parameterized, values)
 
+def canonicalizer_statement_insert(stmt):
+    """
+    Canonicalizes insert statements.
+    """
+
+    assert stmt.get_type() == 'INSERT'
+
+    normalized = ''
+    parameterized = ''
+    values = []
+
+    found_values_keyword = False
+    first_parenthesis_after_values_keyword = None
+    found_new_keyword_afer_values_keyword = False
+
+    for token in stmt.tokens:
+        print 'token.ttype = {0}'.format(token.ttype)
+        print 'type(token) = {0}'.format(type(token))
+        print 'token.normalized = <{0}>'.format(token.normalized)
+        print 'child tokens: {0}'.format(token.tokens if token.is_group() else None)
+
+        token_index = stmt.token_index(token)
+        next_token = stmt.token_next(token_index, skip_ws=False)
+        prev_token = stmt.token_prev(token_index, skip_ws=False)
+        if (token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline) and
+            next_token and
+            next_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline)):
+            t_normalized, t_parameterized, t_values = ('', '', [])
+        elif (type(token) is sqlparse.sql.Identifier) and prev_token.ttype in (Token.Operator,):
+            t_normalized, t_parameterized, t_values = (token.normalized, token.normalized, [])
+        elif token.ttype in (Token.Keyword,):
+            if token.normalized == 'VALUES':
+                found_values_keyword = True
+                print 'found VALUES keyword: {0}'.format(token.normalized)
+            else:
+                if found_values_keyword:
+                    found_new_keyword_afer_values_keyword = True
+            t_normalized, t_parameterized, t_values = canonicalize_token(token)
+        elif token.is_group and type(token) is sqlparse.sql.Parenthesis and \
+             collapse_target_parts and found_values_keyword and not found_new_keyword_afer_values_keyword:
+            if first_parenthesis_after_values_keyword is None:
+                first_parenthesis_after_values_keyword = token
+            if first_parenthesis_after_values_keyword == token:
+                t_normalized, t_parameterized, t_values = ('(N)', '(N)', [])
+            else:
+                t_normalized, t_parameterized, t_values = ('', '', [])
+        elif token.ttype in (Token.Punctuation,) and found_values_keyword and not found_new_keyword_afer_values_keyword:
+            t_normalized, t_parameterized, t_values = ('', '', [])
+        else:
+            t_normalized, t_parameterized, t_values = canonicalize_token(token)
+        normalized += t_normalized
+        parameterized += t_parameterized
+        for t_value in t_values:
+            values.append(t_value)
+
+    normalized = normalized.strip(' ;')
+    parameterized = parameterized.strip(' ;')
+
+    return (normalized, parameterized, values)
+
 def canonicalize_sql(sql):
     """
     Canonicalizes sql statement(s).
@@ -296,7 +358,12 @@ def canonicalize_sql(sql):
     for stmt in parsed:
         print 'stmt => {0} <='.format(stmt)
         print 'stmt.tokens => {0}'.format(stmt.tokens)
-        if stmt.get_type() == 'UNKNOWN':
+        if stmt.get_type() == 'INSERT':
+            print 'stmt.get_type() => {0}'.format(stmt.get_type())
+            stmt_normalized, stmt_parameterized, stmt_values = canonicalizer_statement_insert(stmt)
+            result.append(('{0}'.format(stmt), stmt_normalized, stmt_parameterized, stmt_values))
+            continue
+        elif stmt.get_type() == 'UNKNOWN':
             print 'UNKNOWN: => {0} <='.format(stmt)
             result.append(
                 ('{0}'.format(stmt), None, None, [])
@@ -504,8 +571,6 @@ if __name__ == '__main__':
     parameterized_sql_counts = {}
 
     show_results = False
-
-
 
     if args.sql_file:
         # contents of sql file will be one sql statement per line
