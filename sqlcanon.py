@@ -136,7 +136,15 @@ def canonicalizer_where(token):
     normalized = ''
     parameterized = ''
     values = []
+
+    found_in_keyword = False
+    found_new_keyword_after_in_keyword = False
+
     for child_token in token.tokens:
+        print 'child_token.ttype = {0}'.format(child_token.ttype)
+        print 'type(child_token) = {0}'.format(type(child_token))
+        print 'child_token.normalized = <{0}>'.format(child_token.normalized)
+        print 'child_token child tokens: {0}'.format(child_token.tokens if child_token.is_group() else None)
         child_token_index = token.token_index(child_token)
         next_child_token = token.token_next(child_token_index, skip_ws=False)
         next_nonws_token = token.token_next(child_token_index)
@@ -148,6 +156,17 @@ def canonicalizer_where(token):
                 (prev_nonws_token and prev_nonws_token.ttype in (Token.Operator.Comparison,))
             )):
                 c_normalized, c_parameterized, c_values = ('', '', [])
+        elif collapse_target_parts and child_token.ttype in (Token.Keyword,):
+            if child_token.normalized == 'IN':
+                found_in_keyword = True
+            else:
+                if found_in_keyword:
+                    found_new_keyword_after_in_keyword = True
+            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+        elif collapse_target_parts and child_token.is_group() and \
+            type(child_token) is sqlparse.sql.Parenthesis and \
+            found_in_keyword and not found_new_keyword_after_in_keyword:
+            c_normalized, c_parameterized, c_values = ('(N)', '(N)', [])
         else:
             c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
         normalized += c_normalized
@@ -323,7 +342,7 @@ def canonicalizer_statement_insert(stmt):
                 if found_values_keyword:
                     found_new_keyword_afer_values_keyword = True
             t_normalized, t_parameterized, t_values = canonicalize_token(token)
-        elif collapse_target_parts and token.is_group and \
+        elif collapse_target_parts and token.is_group() and \
             type(token) is sqlparse.sql.Parenthesis and \
             found_values_keyword and not found_new_keyword_afer_values_keyword:
 
