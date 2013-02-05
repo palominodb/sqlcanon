@@ -301,10 +301,10 @@ def canonicalizer_statement_insert(stmt):
     found_new_keyword_afer_values_keyword = False
 
     for token in stmt.tokens:
-        print 'token.ttype = {0}'.format(token.ttype)
-        print 'type(token) = {0}'.format(type(token))
-        print 'token.normalized = <{0}>'.format(token.normalized)
-        print 'child tokens: {0}'.format(token.tokens if token.is_group() else None)
+        #print 'token.ttype = {0}'.format(token.ttype)
+        #print 'type(token) = {0}'.format(type(token))
+        #print 'token.normalized = <{0}>'.format(token.normalized)
+        #print 'child tokens: {0}'.format(token.tokens if token.is_group() else None)
 
         token_index = stmt.token_index(token)
         next_token = stmt.token_next(token_index, skip_ws=False)
@@ -315,7 +315,7 @@ def canonicalizer_statement_insert(stmt):
             t_normalized, t_parameterized, t_values = ('', '', [])
         elif (type(token) is sqlparse.sql.Identifier) and prev_token.ttype in (Token.Operator,):
             t_normalized, t_parameterized, t_values = (token.normalized, token.normalized, [])
-        elif token.ttype in (Token.Keyword,):
+        elif collapse_target_parts and token.ttype in (Token.Keyword,):
             if token.normalized == 'VALUES':
                 found_values_keyword = True
                 print 'found VALUES keyword: {0}'.format(token.normalized)
@@ -323,15 +323,18 @@ def canonicalizer_statement_insert(stmt):
                 if found_values_keyword:
                     found_new_keyword_afer_values_keyword = True
             t_normalized, t_parameterized, t_values = canonicalize_token(token)
-        elif token.is_group and type(token) is sqlparse.sql.Parenthesis and \
-             collapse_target_parts and found_values_keyword and not found_new_keyword_afer_values_keyword:
+        elif collapse_target_parts and token.is_group and \
+            type(token) is sqlparse.sql.Parenthesis and \
+            found_values_keyword and not found_new_keyword_afer_values_keyword:
+
             if first_parenthesis_after_values_keyword is None:
                 first_parenthesis_after_values_keyword = token
             if first_parenthesis_after_values_keyword == token:
                 t_normalized, t_parameterized, t_values = ('(N)', '(N)', [])
             else:
                 t_normalized, t_parameterized, t_values = ('', '', [])
-        elif token.ttype in (Token.Punctuation,) and found_values_keyword and not found_new_keyword_afer_values_keyword:
+        elif collapse_target_parts and token.ttype in (Token.Punctuation,) \
+            and found_values_keyword and not found_new_keyword_afer_values_keyword:
             t_normalized, t_parameterized, t_values = ('', '', [])
         else:
             t_normalized, t_parameterized, t_values = canonicalize_token(token)
