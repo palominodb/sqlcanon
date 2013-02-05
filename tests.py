@@ -7,74 +7,68 @@ class CanonicalizeSqlTests(unittest.TestCase):
     def test_canonicalize_sql_1(self):
         sql = 'select * from foo where id = 1'
         ret = sqlcanon.canonicalize_sql(sql)
-        expected_ret = [
-            (
-                # original sql
-                sql,
+        expected_ret = [(
+            # original sql
+            sql,
 
-                # canonicalized sql
-                u'SELECT * FROM `foo` WHERE `id`=1',
+            # canonicalized sql
+            u'SELECT * FROM `foo` WHERE `id`=1',
 
-                # parameterized sql
-                u'SELECT * FROM `foo` WHERE `id`=%d',
+            # parameterized sql
+            u'SELECT * FROM `foo` WHERE `id`=%d',
 
-                # values for parameterized sql
-                [1]
-            )
-        ]
+            # values for parameterized sql
+            [1]
+            )]
         self.assertEqual(ret, expected_ret)
 
     def test_canonicalize_sql_2(self):
         sql = 'select * from foo where id in ( 1, 2, 3 )'
+        sqlcanon.collapse_target_parts = False
         ret = sqlcanon.canonicalize_sql(sql)
-        expected_ret = [
-            (
-                sql,
-                u'SELECT * FROM `foo` WHERE `id` IN (1,2,3)',
-                u'SELECT * FROM `foo` WHERE `id` IN (%d,%d,%d)',
-                [1, 2, 3]
-            )
-        ]
+        expected_ret = [(
+            sql,
+            u'SELECT * FROM `foo` WHERE `id` IN (1,2,3)',
+            u'SELECT * FROM `foo` WHERE `id` IN (%d,%d,%d)',
+            [1, 2, 3]
+            )]
         self.assertEqual(ret, expected_ret)
 
     def test_canonicalize_sql_3(self):
         sql = 'insert into bar values ( \'string\', 25, 50.00 )'
+        sqlcanon.collapse_target_parts = False
         ret = sqlcanon.canonicalize_sql(sql)
-        expected_ret = [
-            (
-                sql,
-                u'INSERT INTO `bar` VALUES (\'string\',25,50.00)',
-                u'INSERT INTO `bar` VALUES (%s,%d,%f)',
-                ['string', 25, 50.00]
-            )
-        ]
+        expected_ret = [(
+            sql,
+            u'INSERT INTO `bar` VALUES (\'string\',25,50.00)',
+            u'INSERT INTO `bar` VALUES (%s,%d,%f)',
+            ['string', 25, 50.00]
+            )]
         self.assertEqual(ret, expected_ret)
 
     def test_canonicalize_sql_4(self):
         sql = 'insert into foo ( col1, col2, col3 ) values ( 50.00, \'string\', 25 )'
+        sqlcanon.collapse_target_parts = False
         ret = sqlcanon.canonicalize_sql(sql)
-        expected_ret = [
-            (
-                sql,
-                u'INSERT INTO foo(`col1`,`col2`,`col3`) VALUES (50.00,\'string\',25)',
-                u'INSERT INTO foo(`col1`,`col2`,`col3`) VALUES (%f,%s,%d)',
-                [50.00, 'string', 25]
-            )
-        ]
+        expected_ret = [(
+            sql,
+            u'INSERT INTO foo(`col1`,`col2`,`col3`) VALUES (50.00,\'string\',25)',
+            u'INSERT INTO foo(`col1`,`col2`,`col3`) VALUES (%f,%s,%d)',
+            [50.00, 'string', 25]
+            )]
         self.assertEqual(ret, expected_ret)
 
     def test_canonicalize_sql_5(self):
         self.maxDiff = None
         sql = r"""insert into foo.bar ( a, b , c) values ( 'ab\'c' ,  "d\"ef"  , 'ghi'  )"""
+        sqlcanon.collapse_target_parts = False
         ret = sqlcanon.canonicalize_sql(sql)
-        expected_ret = [
-            (
-                sql,
-                ur"""INSERT INTO `foo`.bar(`a`,`b`,`c`) VALUES ('ab\'c','d"ef','ghi')""",
-                ur'INSERT INTO `foo`.bar(`a`,`b`,`c`) VALUES (%s,%s,%s)',
-                ["ab'c", 'd"ef', 'ghi']
-            )
-        ]
+        expected_ret = [(
+            sql,
+            ur"""INSERT INTO `foo`.bar(`a`,`b`,`c`) VALUES ('ab\'c','d"ef','ghi')""",
+            ur'INSERT INTO `foo`.bar(`a`,`b`,`c`) VALUES (%s,%s,%s)',
+            ["ab'c", 'd"ef', 'ghi']
+            )]
         self.assertEqual(ret, expected_ret)
 
     def test_canonicalize_sql_6(self):
@@ -159,6 +153,96 @@ class CanonicalizeSqlTests(unittest.TestCase):
             u"SELECT @@version_comment LIMIT 1",
             u"SELECT @@version_comment LIMIT %d",
             [1]
+            )]
+        self.assertEqual(ret, expected_ret)
+
+    def test_canonicalize_sql_10(self):
+        sql = 'select * from foo where id in ( 1, 2, 3 )'
+        ret = sqlcanon.canonicalize_sql(sql)
+        expected_ret = [(
+            sql,
+            u'SELECT * FROM `foo` WHERE `id` IN (N)',
+            u'SELECT * FROM `foo` WHERE `id` IN (N)',
+            []
+            )]
+        self.assertEqual(ret, expected_ret)
+
+    def test_canonicalize_sql_11(self):
+        sql = 'insert into bar values ( \'string\', 25, 50.00 )'
+        ret = sqlcanon.canonicalize_sql(sql)
+        expected_ret = [(
+            sql,
+            u'INSERT INTO `bar` VALUES (N)',
+            u'INSERT INTO `bar` VALUES (N)',
+            []
+            )]
+        self.assertEqual(ret, expected_ret)
+
+    def test_canonicalize_sql_12(self):
+        self.maxDiff = None
+        sql = r"""insert into foo.bar ( a, b , c) values ( 'ab\'c' ,  "d\"ef"  , 'ghi'  )"""
+        ret = sqlcanon.canonicalize_sql(sql)
+        expected_ret = [(
+            sql,
+            ur"""INSERT INTO `foo`.bar(`a`,`b`,`c`) VALUES (N)""",
+            ur'INSERT INTO `foo`.bar(`a`,`b`,`c`) VALUES (N)',
+            []
+            )]
+        self.assertEqual(ret, expected_ret)
+
+    def test_canonicalize_sql_13(self):
+        self.maxDiff = None
+        sql = r"""
+            insert into people(name, phone, email) values ('Jay', '123', 'jay@jay.com'),('Elmer', '234', 'elmer@elmer.com')
+        """
+        ret = sqlcanon.canonicalize_sql(sql)
+        expected_ret = [(
+            sql,
+            ur"""INSERT INTO people(`name`,`phone`,`email`) VALUES (N)""",
+            ur'INSERT INTO people(`name`,`phone`,`email`) VALUES (N)',
+            []
+            )]
+        self.assertEqual(ret, expected_ret)
+
+    def test_canonicalize_sql_14(self):
+        self.maxDiff = None
+        sql = r"""
+            insert into people(name, phone, email) values ('Bob', '456', 'bob@bob.com')
+        """
+        ret = sqlcanon.canonicalize_sql(sql)
+        expected_ret = [(
+            sql,
+            ur"""INSERT INTO people(`name`,`phone`,`email`) VALUES (N)""",
+            ur'INSERT INTO people(`name`,`phone`,`email`) VALUES (N)',
+            []
+            )]
+        self.assertEqual(ret, expected_ret)
+
+    def test_canonicalize_sql_15(self):
+        self.maxDiff = None
+        sql = r"""
+            select * from people where name in ('Jay', 'Elmer')
+        """
+        ret = sqlcanon.canonicalize_sql(sql)
+        expected_ret = [(
+            sql,
+            ur"SELECT * FROM `people` WHERE `name` IN (N)",
+            ur"SELECT * FROM `people` WHERE `name` IN (N)",
+            []
+            )]
+        self.assertEqual(ret, expected_ret)
+
+    def test_canonicalize_sql_16(self):
+        self.maxDiff = None
+        sql = r"""
+            select * from  people where name in ('Jay', 'Elmer', 'Bob')
+        """
+        ret = sqlcanon.canonicalize_sql(sql)
+        expected_ret = [(
+            sql,
+            ur"SELECT * FROM `people` WHERE `name` IN (N)",
+            ur"SELECT * FROM `people` WHERE `name` IN (N)",
+            []
             )]
         self.assertEqual(ret, expected_ret)
 
