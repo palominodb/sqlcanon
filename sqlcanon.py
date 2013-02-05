@@ -1,8 +1,12 @@
 #!/usr/bin/env python
+import sqlite3
 from sys import stdin
+import os
 import re
 import sqlparse
 from sqlparse.tokens import Token
+
+
 
 def canonicalizer_default(token):
     """
@@ -253,10 +257,10 @@ def canonicalize_token(token):
     Canonicalize a sql statement token.
     """
 
-    print 'token.ttype = {0}'.format(token.ttype)
-    print 'type(token) = {0}'.format(type(token))
-    print 'token.normalized = <{0}>'.format(token.normalized)
-    print 'child tokens: {0}'.format(token.tokens if token.is_group() else None)
+    #print 'token.ttype = {0}'.format(token.ttype)
+    #print 'type(token) = {0}'.format(type(token))
+    #print 'token.normalized = <{0}>'.format(token.normalized)
+    #print 'child tokens: {0}'.format(token.tokens if token.is_group() else None)
 
     normalized = ''
     parameterized = ''
@@ -490,6 +494,7 @@ if __name__ == '__main__':
     print '#### sqlcanon: start ####\n'
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--db', help='The database to use.')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--sql_file', help='process sql statements contained in an sql file (one statement per line)')
     group.add_argument('--mysql_log_file', help='process queries from a mysql log file (mysql general log file format)')
@@ -499,6 +504,8 @@ if __name__ == '__main__':
     parameterized_sql_counts = {}
 
     show_results = False
+
+
 
     if args.sql_file:
         # contents of sql file will be one sql statement per line
@@ -525,17 +532,32 @@ if __name__ == '__main__':
         except Exception, e:
             print 'An error has occurred: {0}'.format(e)
 
-    if show_results:
-        print
-        print 'stats:'
-        print '=' * 80
-        item_count = 0
-        for k, v in parameterized_sql_counts.iteritems():
-            if k != 'UNKNOWN':
-                item_count += 1
-                print '{0}. {1} - {2}'.format(item_count, v, k)
+    db = 'sqlcanon.db'
+    if args.db:
+        db = args.db
+    conn = sqlite3.connect(db)
+    with conn:
+        cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS counts(id INTEGER PRIMARY KEY AUTOINCREMENT, statement TEXT UNIQUE, instances INT)")
 
-        if parameterized_sql_counts.has_key('UNKNOWN'):
-            unknown_count = parameterized_sql_counts['UNKNOWN']
-            item_count += 1
-            print '{0}. {1} - {2}'.format(item_count, unknown_count, 'UNKNOWN')
+        for statement, instances in parameterized_sql_counts.iteritems():
+            cur.execute("SELECT instances FROM counts WHERE statement = ?", (statement,))
+            row = cur.fetchone()
+            if row:
+                instances = row[0] + instances
+                cur.execute("UPDATE counts SET instances = ? WHERE statement = ?", (instances, statement))
+            else:
+                cur.execute("INSERT INTO counts(statement, instances) VALUES(?, ?)", (statement, instances))
+
+        if show_results:
+            print
+            print 'stats:'
+            print '=' * 80
+            item_count = 0
+            cur.execute("SELECT statement, instances FROM counts")
+            while True:
+                row = cur.fetchone()
+                if row is None:
+                    break
+                item_count += 1
+                print '{0}. {1} => {2}'.format(item_count, row[1], row[0])
