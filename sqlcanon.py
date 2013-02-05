@@ -584,6 +584,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--db', help='The database to use.')
+    parser.add_argument('--disable_collapsed_mode', action='store_true', help='Disable collapsed mode.')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--sql_file', help='process sql statements contained in an sql file (one statement per line)')
     group.add_argument('--mysql_log_file', help='process queries from a mysql log file (mysql general log file format)')
@@ -593,6 +594,9 @@ if __name__ == '__main__':
     parameterized_sql_counts = {}
 
     show_results = False
+
+    if args.disable_collapsed_mode:
+        collapse_target_parts = False
 
     if args.sql_file:
         # contents of sql file will be one sql statement per line
