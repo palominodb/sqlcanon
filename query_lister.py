@@ -25,7 +25,7 @@ class QueryLister:
         Appends query to list.
         """
 
-        if dt is None:
+        if not dt: 
             dt = datetime.now()
 
         # order of items on list is expected to be ordered by datetime in ascending order
