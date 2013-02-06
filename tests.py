@@ -6,6 +6,7 @@ import sqlcanon
 class CanonicalizeSqlTests(unittest.TestCase):
 
     def test_canonicalize_sql_1(self):
+        sqlcanon.COLLAPSE_TARGET_PARTS = False
         sql = 'select * from foo where id = 1'
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [(
@@ -24,8 +25,8 @@ class CanonicalizeSqlTests(unittest.TestCase):
         self.assertEqual(ret, expected_ret)
 
     def test_canonicalize_sql_2(self):
+        sqlcanon.COLLAPSE_TARGET_PARTS = False
         sql = 'select * from foo where id in ( 1, 2, 3 )'
-        sqlcanon.collapse_target_parts = False
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [(
             sql,
@@ -36,8 +37,8 @@ class CanonicalizeSqlTests(unittest.TestCase):
         self.assertEqual(ret, expected_ret)
 
     def test_canonicalize_sql_3(self):
+        sqlcanon.COLLAPSE_TARGET_PARTS = False
         sql = 'insert into bar values ( \'string\', 25, 50.00 )'
-        sqlcanon.collapse_target_parts = False
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [(
             sql,
@@ -48,8 +49,8 @@ class CanonicalizeSqlTests(unittest.TestCase):
         self.assertEqual(ret, expected_ret)
 
     def test_canonicalize_sql_4(self):
+        sqlcanon.COLLAPSE_TARGET_PARTS = False
         sql = 'insert into foo ( col1, col2, col3 ) values ( 50.00, \'string\', 25 )'
-        sqlcanon.collapse_target_parts = False
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [(
             sql,
@@ -61,8 +62,8 @@ class CanonicalizeSqlTests(unittest.TestCase):
 
     def test_canonicalize_sql_5(self):
         self.maxDiff = None
+        sqlcanon.COLLAPSE_TARGET_PARTS = False
         sql = r"""insert into foo.bar ( a, b , c) values ( 'ab\'c' ,  "d\"ef"  , 'ghi'  )"""
-        sqlcanon.collapse_target_parts = False
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [(
             sql,
@@ -74,6 +75,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
 
     def test_canonicalize_sql_6(self):
         self.maxDiff = None
+        sqlcanon.COLLAPSE_TARGET_PARTS = False
         sql = r"""
             select t1.c1, t2.c1
             from t1, t2
@@ -90,6 +92,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
 
     def test_canonicalize_sql_7(self):
         self.maxDiff = None
+        sqlcanon.COLLAPSE_TARGET_PARTS = False
         sql = r"""
             select
                 t1.c1 ,
@@ -117,6 +120,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
 
     def test_canonicalize_sql_8(self):
         self.maxDiff = None
+        sqlcanon.COLLAPSE_TARGET_PARTS = False
         sql = r"""
             select
                 t1.c1 ,
@@ -147,6 +151,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
 
     def test_canonicalize_sql_9(self):
         self.maxDiff = None
+        sqlcanon.COLLAPSE_TARGET_PARTS = False
         sql = r'select @@version_comment  limit  1'
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [(
@@ -158,6 +163,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
         self.assertEqual(ret, expected_ret)
 
     def test_canonicalize_sql_10(self):
+        sqlcanon.COLLAPSE_TARGET_PARTS = True
         sql = 'select * from foo where id in ( 1, 2, 3 )'
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [(
@@ -169,6 +175,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
         self.assertEqual(ret, expected_ret)
 
     def test_canonicalize_sql_11(self):
+        sqlcanon.COLLAPSE_TARGET_PARTS = True
         sql = 'insert into bar values ( \'string\', 25, 50.00 )'
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [(
@@ -181,6 +188,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
 
     def test_canonicalize_sql_12(self):
         self.maxDiff = None
+        sqlcanon.COLLAPSE_TARGET_PARTS = True
         sql = r"""insert into foo.bar ( a, b , c) values ( 'ab\'c' ,  "d\"ef"  , 'ghi'  )"""
         ret = sqlcanon.canonicalize_sql(sql)
         expected_ret = [(
@@ -193,6 +201,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
 
     def test_canonicalize_sql_13(self):
         self.maxDiff = None
+        sqlcanon.COLLAPSE_TARGET_PARTS = True
         sql = r"""
             insert into people(name, phone, email) values ('Jay', '123', 'jay@jay.com'),('Elmer', '234', 'elmer@elmer.com')
         """
@@ -207,6 +216,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
 
     def test_canonicalize_sql_14(self):
         self.maxDiff = None
+        sqlcanon.COLLAPSE_TARGET_PARTS = True
         sql = r"""
             insert into people(name, phone, email) values ('Bob', '456', 'bob@bob.com')
         """
@@ -221,6 +231,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
 
     def test_canonicalize_sql_15(self):
         self.maxDiff = None
+        sqlcanon.COLLAPSE_TARGET_PARTS = True
         sql = r"""
             select * from people where name in ('Jay', 'Elmer')
         """
@@ -235,6 +246,7 @@ class CanonicalizeSqlTests(unittest.TestCase):
 
     def test_canonicalize_sql_16(self):
         self.maxDiff = None
+        sqlcanon.COLLAPSE_TARGET_PARTS = True
         sql = r"""
             select * from  people where name in ('Jay', 'Elmer', 'Bob')
         """
@@ -246,34 +258,6 @@ class CanonicalizeSqlTests(unittest.TestCase):
             []
             )]
         self.assertEqual(ret, expected_ret)
-
-#class QueryListManagerTests(unittest.TestCase):
-#
-#    def test_query_list_manager_1(self):
-#        queries = [
-#            """insert into people(name, phone, email) values ('Jay', '123', 'jay@jay.com'),
-#                ('Elmer', '234', 'elmer@elmer.com')""",
-#            """insert into people(name, phone, email) values ('Bob', '456', 'bob@bob.com')""",
-#            """select * from people""",
-#            """select * from people where name in ('Jay', 'Elmer')""",
-#            """select * from  people where name in ('Jay', 'Elmer', 'Bob')""",
-#            """select * from people where name in ('J', 'E')"""
-#        ]
-#
-#        dt_now = datetime.now()
-#        dts = [
-#            dt_now - timedelta(minutes=4),
-#            dt_now - timedelta(minutes=3),
-#            dt_now - timedelta(minutes=2),
-#            dt_now - timedelta(minutes=1),
-#            dt_now,
-#        ]
-#
-#        list_manager = sqlcanon.QueryListManager()
-#
-#        for dt, query in zip(dts, queries):
-#            orig_sql, normalized_sql, parameterized_sql, values = sqlcanon.canonicalize_sql(query)
-#            list_manager.add_query(orig_sql=orig_sql, parameterized_sql=parameterized_sql, dt=dt)
 
 if __name__ == '__main__':
     unittest.main()
