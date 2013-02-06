@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from datetime import datetime, timedelta
 import unittest
 import sqlcanon
 
@@ -245,6 +246,34 @@ class CanonicalizeSqlTests(unittest.TestCase):
             []
             )]
         self.assertEqual(ret, expected_ret)
+
+#class QueryListManagerTests(unittest.TestCase):
+#
+#    def test_query_list_manager_1(self):
+#        queries = [
+#            """insert into people(name, phone, email) values ('Jay', '123', 'jay@jay.com'),
+#                ('Elmer', '234', 'elmer@elmer.com')""",
+#            """insert into people(name, phone, email) values ('Bob', '456', 'bob@bob.com')""",
+#            """select * from people""",
+#            """select * from people where name in ('Jay', 'Elmer')""",
+#            """select * from  people where name in ('Jay', 'Elmer', 'Bob')""",
+#            """select * from people where name in ('J', 'E')"""
+#        ]
+#
+#        dt_now = datetime.now()
+#        dts = [
+#            dt_now - timedelta(minutes=4),
+#            dt_now - timedelta(minutes=3),
+#            dt_now - timedelta(minutes=2),
+#            dt_now - timedelta(minutes=1),
+#            dt_now,
+#        ]
+#
+#        list_manager = sqlcanon.QueryListManager()
+#
+#        for dt, query in zip(dts, queries):
+#            orig_sql, normalized_sql, parameterized_sql, values = sqlcanon.canonicalize_sql(query)
+#            list_manager.add_query(orig_sql=orig_sql, parameterized_sql=parameterized_sql, dt=dt)
 
 if __name__ == '__main__':
     unittest.main()

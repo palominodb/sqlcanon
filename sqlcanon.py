@@ -1,14 +1,22 @@
 #!/usr/bin/env python
-import sqlite3
-from sys import stdin
+
+from datetime import datetime, timedelta
 import os
 import re
+from sys import stdin
+import time
+
+import sqlite3
 import sqlparse
 from sqlparse.tokens import Token
 
+from query_lister import QueryLister
+
 # settings
 # collapse target parts (for now target parts are in and values)
-collapse_target_parts = True
+COLLAPSE_TARGET_PARTS = True
+
+SETTINGS = {}
 
 def canonicalizer_default(token):
     """
@@ -141,10 +149,10 @@ def canonicalizer_where(token):
     found_new_keyword_after_in_keyword = False
 
     for child_token in token.tokens:
-        print 'child_token.ttype = {0}'.format(child_token.ttype)
-        print 'type(child_token) = {0}'.format(type(child_token))
-        print 'child_token.normalized = <{0}>'.format(child_token.normalized)
-        print 'child_token child tokens: {0}'.format(child_token.tokens if child_token.is_group() else None)
+        #print 'child_token.ttype = {0}'.format(child_token.ttype)
+        #print 'type(child_token) = {0}'.format(type(child_token))
+        #print 'child_token.normalized = <{0}>'.format(child_token.normalized)
+        #print 'child_token child tokens: {0}'.format(child_token.tokens if child_token.is_group() else None)
         child_token_index = token.token_index(child_token)
         next_child_token = token.token_next(child_token_index, skip_ws=False)
         next_nonws_token = token.token_next(child_token_index)
@@ -156,14 +164,14 @@ def canonicalizer_where(token):
                 (prev_nonws_token and prev_nonws_token.ttype in (Token.Operator.Comparison,))
             )):
                 c_normalized, c_parameterized, c_values = ('', '', [])
-        elif collapse_target_parts and child_token.ttype in (Token.Keyword,):
+        elif COLLAPSE_TARGET_PARTS and child_token.ttype in (Token.Keyword,):
             if child_token.normalized == 'IN':
                 found_in_keyword = True
             else:
                 if found_in_keyword:
                     found_new_keyword_after_in_keyword = True
             c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
-        elif collapse_target_parts and child_token.is_group() and \
+        elif COLLAPSE_TARGET_PARTS and child_token.is_group() and \
             type(child_token) is sqlparse.sql.Parenthesis and \
             found_in_keyword and not found_new_keyword_after_in_keyword:
             c_normalized, c_parameterized, c_values = ('(N)', '(N)', [])
@@ -238,7 +246,7 @@ def canonicalizer_function(token):
     like COUNT, it is converted to uppercase and not quoted.
     Whitespaces are canonicalized to empty string.
     """
-    print 'canonicalizer_function'
+    #print 'canonicalizer_function'
     assert token.is_group()
 
     normalized = ''
@@ -334,15 +342,15 @@ def canonicalizer_statement_insert(stmt):
             t_normalized, t_parameterized, t_values = ('', '', [])
         elif (type(token) is sqlparse.sql.Identifier) and prev_token.ttype in (Token.Operator,):
             t_normalized, t_parameterized, t_values = (token.normalized, token.normalized, [])
-        elif collapse_target_parts and token.ttype in (Token.Keyword,):
+        elif COLLAPSE_TARGET_PARTS and token.ttype in (Token.Keyword,):
             if token.normalized == 'VALUES':
                 found_values_keyword = True
-                print 'found VALUES keyword: {0}'.format(token.normalized)
+                #print 'found VALUES keyword: {0}'.format(token.normalized)
             else:
                 if found_values_keyword:
                     found_new_keyword_afer_values_keyword = True
             t_normalized, t_parameterized, t_values = canonicalize_token(token)
-        elif collapse_target_parts and token.is_group() and \
+        elif COLLAPSE_TARGET_PARTS and token.is_group() and \
             type(token) is sqlparse.sql.Parenthesis and \
             found_values_keyword and not found_new_keyword_afer_values_keyword:
 
@@ -352,7 +360,7 @@ def canonicalizer_statement_insert(stmt):
                 t_normalized, t_parameterized, t_values = ('(N)', '(N)', [])
             else:
                 t_normalized, t_parameterized, t_values = ('', '', [])
-        elif collapse_target_parts and token.ttype in (Token.Punctuation,) \
+        elif COLLAPSE_TARGET_PARTS and token.ttype in (Token.Punctuation,) \
             and found_values_keyword and not found_new_keyword_afer_values_keyword:
             t_normalized, t_parameterized, t_values = ('', '', [])
         else:
@@ -378,15 +386,15 @@ def canonicalize_sql(sql):
     parsed = sqlparse.parse(sql)
 
     for stmt in parsed:
-        print 'stmt => {0} <='.format(stmt)
-        print 'stmt.tokens => {0}'.format(stmt.tokens)
+        #print 'stmt => {0} <='.format(stmt)
+        #print 'stmt.tokens => {0}'.format(stmt.tokens)
         if stmt.get_type() == 'INSERT':
-            print 'stmt.get_type() => {0}'.format(stmt.get_type())
+            #print 'stmt.get_type() => {0}'.format(stmt.get_type())
             stmt_normalized, stmt_parameterized, stmt_values = canonicalizer_statement_insert(stmt)
             result.append(('{0}'.format(stmt), stmt_normalized, stmt_parameterized, stmt_values))
             continue
         elif stmt.get_type() == 'UNKNOWN':
-            print 'UNKNOWN: => {0} <='.format(stmt)
+            #print 'UNKNOWN: => {0} <='.format(stmt)
             result.append(
                 ('{0}'.format(stmt), None, None, [])
             )
@@ -576,6 +584,158 @@ def process_data_from_stdin():
         print 'An error has occurred: {0}'.format(e)
     return counts
 
+QUERY_LISTER = QueryLister()
+
+def canonicalize_sql_results_processor_impl(results):
+    """
+    Default canonicalize_sql results processor.
+    """
+    for result in results:
+        query, _, canonicalized_query, _ = result
+        db_increment_canonicalized_query_count(canonicalized_query if canonicalized_query else 'UNKNOWN')
+        QUERY_LISTER.append_query(query=query, canonicalized_query=canonicalized_query)
+
+def print_queries(listen_window_length):
+    dt_now = datetime.now()
+    result = QUERY_LISTER.get_list(
+        dt_now - timedelta(minutes=listen_window_length),
+        dt_now)
+    print
+    print '#### Queries found in the last {0} minutes:'.format(listen_window_length)
+    if result:
+        for dt, query, canonicalized_query, count in result:
+            print dt.strftime('%Y-%m-%d %H:%M:%S %f'), '[{0}{1}]'.format(count, '' if canonicalized_query else '-unknown'), query
+    else:
+        print '(None)'
+
+def query_log_listen(log_file, listen_frequency, listen_window_length,
+                     canonicalize_sql_results_processor=canonicalize_sql_results_processor_impl):
+    """
+    Listens for incoming queries from a mysql query log file display stats.
+    """
+    file = open(log_file)
+
+    # Find the size of the file and move to the end
+    st_results = os.stat(log_file)
+    st_size = st_results[6]
+    file.seek(st_size)
+
+    try:
+        line = ''
+        lines_to_parse = ''
+        parse_now = False
+        exit_loop = False
+        query_count = 0
+
+        while True:
+            try:
+                if parse_now:
+                    # search for query embedded in lines
+                    pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))'
+                    match = re.search(pat, lines_to_parse)
+                    if match:
+                        #print 'match'
+                        #print 'lines_to_parse => {0}'.format(lines_to_parse)
+                        query = match.group('query')
+                        #print 'query => {0}'.format(query)
+                        query_count += 1
+                        #print '{0}. {1}'.format(query_count, query)
+                        canonicalize_sql_results = canonicalize_sql(query)
+                        canonicalize_sql_results_processor(canonicalize_sql_results)
+                        lines_to_parse = ''
+                    #else:
+                    #    print 'no match, lines_to_parse => {0} <='.format(lines_to_parse)
+                    lines_to_parse = line if line else ''
+
+                    if lines_to_parse:
+                        # check if we can parse the recent line
+                        match = re.search(pat, lines_to_parse)
+                        if match:
+                            #print 'match'
+                            #print 'lines_to_parse => {0}'.format(lines_to_parse)
+                            query = match.group('query')
+                            #print 'query => {0}'.format(query)
+                            query_count += 1
+                            #print '{0}. {1}'.format(query_count, query)
+                            canonicalize_sql_results = canonicalize_sql(query)
+                            canonicalize_sql_results_processor(canonicalize_sql_results)
+                            lines_to_parse = ''
+                        #else:
+                        #    print 'no match, lines_to_parse => {0} <='.format(lines_to_parse)
+                    parse_now = False
+
+                    if exit_loop:
+                        break
+
+                where = file.tell()
+                line = file.readline()
+                if not line:
+                    print_queries(listen_window_length)
+                    time.sleep(listen_frequency)
+                    file.seek(where)
+                else:
+                    #print 'line => {0} <='.format(line)
+                    # check this line has the start of a query
+                    pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+'
+                    match = re.search(pat, line)
+                    if match:
+                        # found match, do we have unparsed lines?
+                        # if yes, parse them now,
+                        # then set lines_to_parse = line
+                        parse_now = True
+                        #print 'parse_now'
+                        continue
+                    else:
+                        lines_to_parse += line
+            except (KeyboardInterrupt, SystemExit):
+                if lines_to_parse:
+                    parse_now = True
+                    exit_loop = True
+                    continue
+                break
+    except Exception, e:
+        print 'Exception: {0}'.format(e)
+        raise
+    finally:
+        file.close()
+
+def db_increment_canonicalized_query_count(canonicalized_query, count=1):
+    """
+    Increments count on database.
+    """
+
+    conn = sqlite3.connect(SETTINGS['DB'])
+    with conn:
+        cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS counts(id INTEGER PRIMARY KEY AUTOINCREMENT, statement TEXT UNIQUE, instances INT)")
+
+        cur.execute("SELECT instances FROM counts WHERE statement = ?", (canonicalized_query,))
+        row = cur.fetchone()
+        if row:
+            count = row[0] + count
+            cur.execute("UPDATE counts SET instances = ? WHERE statement = ?", (count, canonicalized_query))
+        else:
+            cur.execute("INSERT INTO counts(statement, instances) VALUES(?, ?)", (canonicalized_query, count))
+
+def print_db_counts():
+    """
+    Prints counts stored on database.
+    """
+
+    print
+    print 'Counts stored in database:'
+    print '=' * 80
+    item_count = 0
+    conn = sqlite3.connect(SETTINGS['DB'])
+    with conn:
+        cur = conn.cursor()
+        cur.execute("SELECT statement, instances FROM counts")
+        while True:
+            row = cur.fetchone()
+            if row is None:
+                break
+            item_count += 1
+            print '{0}. {1} => {2}'.format(item_count, row[1], row[0])
 
 if __name__ == '__main__':
     import argparse
@@ -585,9 +745,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--db', help='The database to use.')
     parser.add_argument('--disable_collapsed_mode', action='store_true', help='Disable collapsed mode.')
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument('--sql_file', help='process sql statements contained in an sql file (one statement per line)')
-    group.add_argument('--mysql_log_file', help='process queries from a mysql log file (mysql general log file format)')
+    parser.add_argument('--listen', action='store_true', help='Opens up log file and waits for newly written data.')
+    parser.add_argument('--listen_frequency', default=1, type=int, help='Listening frequency (number of seconds).')
+    parser.add_argument('--listen_window_length', default=5, type=int, help='Length of period of query list filter (number of minutes)')
+    parser.add_argument('--log_file', default='/var/log/mysql/mysql.log', help='Mysql query log file to process.')
+    parser.add_argument('--print_db_counts', action='store_true', help='Prints counts stored in DB at the end of execution.')
+    #group = parser.add_mutually_exclusive_group()
+    #group.add_argument('--sql_file', help='process sql statements contained in an sql file (one statement per line)')
+    #group.add_argument('--mysql_log_file', help='process queries from a mysql log file (mysql general log file format)')
+
 
     args = parser.parse_args()
 
@@ -596,25 +762,29 @@ if __name__ == '__main__':
     show_results = False
 
     if args.disable_collapsed_mode:
-        collapse_target_parts = False
+        COLLAPSE_TARGET_PARTS = False
 
-    if args.sql_file:
-        # contents of sql file will be one sql statement per line
+    SETTINGS['DB'] = args.db if args.db else 'sqlcanon.db'
 
-        try:
-            parameterized_sql_counts = process_sql_file(args.sql_file)
-            show_results = True
-        except Exception, e:
-            print 'An error has occurred: {0}'.format(e)
-
-    elif args.mysql_log_file:
-
-        try:
-            parameterized_sql_counts = process_mysql_log_file(args.mysql_log_file)
-            show_results = True
-        except Exception, e:
-            print 'An error has occurred: {0}'.format(e)
-
+#    if args.sql_file:
+#        # contents of sql file will be one sql statement per line
+#
+#        try:
+#            parameterized_sql_counts = process_sql_file(args.sql_file)
+#            show_results = True
+#        except Exception, e:
+#            print 'An error has occurred: {0}'.format(e)
+#
+#    elif args.mysql_log_file and not args.listen:
+#
+#        try:
+#            parameterized_sql_counts = process_mysql_log_file(args.mysql_log_file)
+#            show_results = True
+#        except Exception, e:
+#            print 'An error has occurred: {0}'.format(e)
+    if args.log_file and args.listen:
+        query_log_listen(log_file=args.log_file, listen_frequency=args.listen_frequency,
+            listen_window_length=args.listen_window_length)
     else:
         # read from pipe
         try:
@@ -623,32 +793,20 @@ if __name__ == '__main__':
         except Exception, e:
             print 'An error has occurred: {0}'.format(e)
 
-    db = 'sqlcanon.db'
-    if args.db:
-        db = args.db
-    conn = sqlite3.connect(db)
-    with conn:
-        cur = conn.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS counts(id INTEGER PRIMARY KEY AUTOINCREMENT, statement TEXT UNIQUE, instances INT)")
 
-        for statement, instances in parameterized_sql_counts.iteritems():
-            cur.execute("SELECT instances FROM counts WHERE statement = ?", (statement,))
-            row = cur.fetchone()
-            if row:
-                instances = row[0] + instances
-                cur.execute("UPDATE counts SET instances = ? WHERE statement = ?", (instances, statement))
-            else:
-                cur.execute("INSERT INTO counts(statement, instances) VALUES(?, ?)", (statement, instances))
-
-        if show_results:
-            print
-            print 'stats:'
-            print '=' * 80
-            item_count = 0
-            cur.execute("SELECT statement, instances FROM counts")
-            while True:
-                row = cur.fetchone()
-                if row is None:
-                    break
-                item_count += 1
-                print '{0}. {1} => {2}'.format(item_count, row[1], row[0])
+#    conn = sqlite3.connect(SETTINGS['DB'])
+#    with conn:
+#        cur = conn.cursor()
+#        cur.execute("CREATE TABLE IF NOT EXISTS counts(id INTEGER PRIMARY KEY AUTOINCREMENT, statement TEXT UNIQUE, instances INT)")
+#
+#        for statement, instances in parameterized_sql_counts.iteritems():
+#            cur.execute("SELECT instances FROM counts WHERE statement = ?", (statement,))
+#            row = cur.fetchone()
+#            if row:
+#                instances = row[0] + instances
+#                cur.execute("UPDATE counts SET instances = ? WHERE statement = ?", (instances, statement))
+#            else:
+#                cur.execute("INSERT INTO counts(statement, instances) VALUES(?, ?)", (statement, instances))
+#
+    if args.print_db_counts:
+        print_db_counts()
