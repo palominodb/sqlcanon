@@ -1,7 +1,12 @@
 #!/usr/bin/env python
 from datetime import datetime, timedelta
+import pprint
 import unittest
+
 import sqlcanon
+import query_lister
+
+pp = pprint.PrettyPrinter(indent=4)
 
 class CanonicalizeSqlTests(unittest.TestCase):
 
@@ -258,6 +263,89 @@ class CanonicalizeSqlTests(unittest.TestCase):
             []
             )]
         self.assertEqual(ret, expected_ret)
+
+class QueryListerTests(unittest.TestCase):
+    def setUp(self, *args, **kwargs):
+        self.maxDiff = None
+        sqlcanon.COLLAPSE_TARGET_PARTS = True
+
+        self.queries = queries = [
+            """insert into people(name, phone, email) values ('Jay', '123', 'jay@jay.com'),
+                ('Elmer', '234', 'elmer@elmer.com')""",
+            """insert into people(name, phone, email) values ('Bob', '456', 'bob@bob.com')""",
+            """select * from people""",
+            """select * from people where name in ('Jay', 'Elmer')""",
+            """select * from  people where name in ('Jay', 'Elmer', 'Bob')""",
+            """select * from people where name in ('J', 'E')"""
+        ]
+
+        self.dt_now = dt_now = datetime.now()
+        self.dts = dts = [
+            dt_now - timedelta(minutes=5),
+            dt_now - timedelta(minutes=4),
+            dt_now - timedelta(minutes=3),
+            dt_now - timedelta(minutes=2),
+            dt_now - timedelta(minutes=1),
+            dt_now,
+        ]
+
+        self.lister = lister = query_lister.QueryLister()
+
+        for dt, query in zip(dts, queries):
+            query, _, canonicalized_query, _ = sqlcanon.canonicalize_sql(query)[0]
+            lister.append_query(query=query, canonicalized_query=canonicalized_query, dt=dt)
+
+
+    def tearDown(self):
+        pass
+
+    def test_get_list_1(self):
+
+        result = self.lister.get_list(self.dt_now - timedelta(minutes=5),
+            self.dt_now - timedelta(minutes=3))
+        self.assertEqual(len(result), 3)
+        counts = zip(*result)[3]
+        self.assertEqual(counts, (2, 2, 1))
+
+    def test_get_list_2(self):
+        result = self.lister.get_list(self.dt_now - timedelta(minutes=4),
+            self.dt_now - timedelta(minutes=2))
+        self.assertEqual(len(result), 3)
+        counts = zip(*result)[3]
+        self.assertEqual(counts, (1, 1, 1))
+
+    def test_get_list_3(self):
+        result = self.lister.get_list(self.dt_now - timedelta(minutes=3),
+            self.dt_now - timedelta(minutes=1))
+        self.assertEqual(len(result), 3)
+        counts = zip(*result)[3]
+        self.assertEqual(counts, (1, 2, 2))
+
+    def test_get_list_4(self):
+        result = self.lister.get_list(self.dt_now - timedelta(minutes=2),
+            self.dt_now)
+        self.assertEqual(len(result), 3)
+        counts = zip(*result)[3]
+        self.assertEqual(counts, (3, 3, 3))
+
+    def test_get_list_5(self):
+        result = self.lister.get_list(self.dt_now - timedelta(minutes=1),
+            self.dt_now + timedelta(minutes=1))
+        self.assertEqual(len(result), 2)
+        counts = zip(*result)[3]
+        self.assertEqual(counts, (2, 2))
+
+    def test_get_list_6(self):
+        result = self.lister.get_list(self.dt_now,
+            self.dt_now + timedelta(minutes=2))
+        self.assertEqual(len(result), 1)
+        counts = zip(*result)[3]
+        self.assertEqual(counts, (1,))
+
+    def test_get_list_7(self):
+        result = self.lister.get_list(self.dt_now + timedelta(minutes=1),
+            self.dt_now + timedelta(minutes=3))
+        self.assertEqual(len(result), 0)
 
 if __name__ == '__main__':
     unittest.main()
