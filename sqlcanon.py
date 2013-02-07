@@ -12,10 +12,14 @@ from sqlparse.tokens import Token
 
 from query_lister import QueryLister
 
-# settings
+QUERY_LOG_PATTERN_QUERY_START = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+'
+
+QUERY_LOG_PATTERN_FULL_QUERY = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))'
+
 # collapse target parts (for now target parts are in and values)
 COLLAPSE_TARGET_PARTS = True
 
+# settings
 SETTINGS = {}
 
 def canonicalizer_default(token):
@@ -428,172 +432,128 @@ def canonicalize_sql(sql):
         )
     return result
 
-def process_mysql_log_file(mysql_log_file):
+def process_log_file(log_file):
     """
     Processes contents of log file (mysql general log file format).
     """
+    f = open(log_file)
+    try:
+        process_query_log(f)
+    except Exception, e:
+        raise
+    finally:
+        f.close()
 
-    counts = {}
-    f = open(mysql_log_file)
+def db_increment_canonicalized_query_count_from_results(results):
+    """
+    Increment db counts with data from results..
+    """
+
+    for result in results:
+        query, _, canonicalized_query, _ = result
+        print 'Query: {0}'.format(query)
+        db_increment_canonicalized_query_count(
+            canonicalized_query if canonicalized_query else 'UNKNOWN')
+
+def process_query_log(source,
+                      canonicalize_sql_results_processor=db_increment_canonicalized_query_count_from_results):
+    """
+    Processes queries from source.
+
+    source
+        either file or stdin
+    """
+
     try:
         line = ''
         lines_to_parse = ''
         parse_now = False
         exit_loop = False
-        query_count = 0
+
         while True:
-            if parse_now:
-                # search for query embedded in lines
-                pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))'
-                match = re.search(pat, lines_to_parse)
-                if match:
-                    print 'lines_to_parse => {0}'.format(lines_to_parse)
-                    query = match.group('query')
-                    print 'query => {0}'.format(query)
-                    query_count += 1
-                    print '{0}. {1}'.format(query_count, query)
-                    ret = canonicalize_sql(query)
-                    for data in ret:
-                        if data[2]:
-                            parameterized_sql = data[2]
-                        else:
-                            parameterized_sql = 'UNKNOWN'
-                        if counts.has_key(parameterized_sql):
-                            counts[parameterized_sql] += 1
-                        else:
-                            counts[parameterized_sql] = 1
-                parse_now = False
-                lines_to_parse = line if line else ''
-                if exit_loop:
+            try:
+                if parse_now:
+                    # search for query embedded in lines
+                    pat = QUERY_LOG_PATTERN_FULL_QUERY
+                    match = re.search(pat, lines_to_parse)
+                    if match:
+                        query = match.group('query')
+                        canonicalize_sql_results = canonicalize_sql(query)
+                        canonicalize_sql_results_processor(
+                            canonicalize_sql_results)
+                        lines_to_parse = ''
+                    else:
+                        #print 'Could not parse the following: {0}'.format(lines_to_parse)
+                        pass
+
+                    lines_to_parse = line if line else ''
+                    if lines_to_parse:
+                        # check if we can parse the recent line
+                        match = re.search(pat, lines_to_parse)
+                        if match:
+                            query = match.group('query')
+                            canonicalize_sql_results = canonicalize_sql(query)
+                            canonicalize_sql_results_processor(
+                                canonicalize_sql_results)
+                            lines_to_parse = ''
+
+                    parse_now = False
+
+                    if exit_loop:
+                        break
+
+                line = source.readline()
+                if not line:
+                    # end of file, parse lines not yet parsed if present before exiting loop
+                    if lines_to_parse:
+                        parse_now = True
+                        exit_loop = True
+                        continue
                     break
-            line = f.readline()
-            if not line:
-                # end of file, parse lines not yet parsed if present before exiting loop
+                else:
+                    # check if this line has the start of a query
+                    pat = QUERY_LOG_PATTERN_QUERY_START
+                    match = re.search(pat, line)
+                    if match:
+                        # found match, do we have lines that were not yet parsed?
+                        # if yes, parse them now,
+                        # then set lines_to_parse = line
+                        parse_now = True
+                        continue
+                    else:
+                        lines_to_parse += line
+            except (KeyboardInterrupt, SystemExit):
                 if lines_to_parse:
                     parse_now = True
                     exit_loop = True
                     continue
                 break
-            else:
-                # check this line has the start of a query
-                pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+'
-                match = re.search(pat, line)
-                if match:
-                    # found match, do we have unparsed lines?
-                    # if yes, parse them now,
-                    # then set lines_to_parse = line
-                    parse_now = True
-                    continue
-                else:
-                    lines_to_parse += line
     except Exception, e:
-        print 'An error has occurred: {0}'.format(e)
-    f.close()
-    return counts
+        print 'Exception in process_query_log: {0}'.format(e)
+        raise
 
-def process_sql_file(sql_file):
+def process_query_log_from_stdin(
+        canonicalize_sql_results_processor=db_increment_canonicalized_query_count_from_results):
     """
-    Processes contents of an sql file.
-    One sql statement per line is assumged.
-    """
-
-    counts = {}
-    f = open(sql_file)
-    try:
-        line_count = 0
-        while True:
-            line = f.readline()
-            if not line:
-                break
-            line = line.strip()
-            line_count += 1
-            print '{0}. {1}'.format(line_count, line)
-            ret = canonicalize_sql(line)
-            for data in ret:
-                if data[2]:
-                    parameterized_sql = data[2]
-                else:
-                    parameterized_sql = 'UNKNOWN'
-                if counts.has_key(parameterized_sql):
-                    counts[parameterized_sql] += 1
-                else:
-                    counts[parameterized_sql] = 1
-    except Exception, e:
-        print 'An error has occurred: {0}'.format(e)
-    f.close()
-    return counts
-
-def process_data_from_stdin():
-    """
-    Processes sql from stdin.
+    Processes queries coming from stdin.
     """
 
-    counts = {}
-    try:
-        line = ''
-        lines_to_parse = ''
-        parse_now = False
-        exit_loop = False
-        query_count = 0
-        while True:
-            if parse_now:
-                # search for query embedded in lines
-                pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))'
-                match = re.search(pat, lines_to_parse)
-                if match:
-                    print 'lines_to_parse => {0}'.format(lines_to_parse)
-                    query = match.group('query')
-                    print 'query => {0}'.format(query)
-                    query_count += 1
-                    print '{0}. {1}'.format(query_count, query)
-                    ret = canonicalize_sql(query)
-                    for data in ret:
-                        if data[2]:
-                            parameterized_sql = data[2]
-                        else:
-                            parameterized_sql = 'UNKNOWN'
-                        if counts.has_key(parameterized_sql):
-                            counts[parameterized_sql] += 1
-                        else:
-                            counts[parameterized_sql] = 1
-                parse_now = False
-                lines_to_parse = line if line else ''
-                if exit_loop:
-                    break
-            line = stdin.readline()
-            if not line:
-                # end of file, parse lines not yet parsed if present before exiting loop
-                if lines_to_parse:
-                    parse_now = True
-                    exit_loop = True
-                    continue
-                break
-            else:
-                # check this line has the start of a query
-                pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+'
-                match = re.search(pat, line)
-                if match:
-                    # found match, do we have unparsed lines?
-                    # if yes, parse them now,
-                    # then set lines_to_parse = line
-                    parse_now = True
-                    continue
-                else:
-                    lines_to_parse += line
-    except Exception, e:
-        print 'An error has occurred: {0}'.format(e)
-    return counts
+    process_query_log(stdin)
 
 QUERY_LISTER = QueryLister()
 
-def canonicalize_sql_results_processor_impl(results):
+def append_queries_to_query_lister(results):
     """
-    Default canonicalize_sql results processor.
+    Append queries in canonicalize_sql_results to QUERY_LISTER.
+    This method increments db counts too.
     """
+
     for result in results:
         query, _, canonicalized_query, _ = result
-        db_increment_canonicalized_query_count(canonicalized_query if canonicalized_query else 'UNKNOWN')
-        QUERY_LISTER.append_query(query=query, canonicalized_query=canonicalized_query)
+        db_increment_canonicalized_query_count(
+            canonicalized_query if canonicalized_query else 'UNKNOWN')
+        QUERY_LISTER.append_query(query=query,
+            canonicalized_query=canonicalized_query)
 
 def print_queries(listen_window_length):
     dt_now = datetime.now()
@@ -609,10 +569,11 @@ def print_queries(listen_window_length):
         print '(None)'
 
 def query_log_listen(log_file, listen_frequency, listen_window_length,
-                     canonicalize_sql_results_processor=canonicalize_sql_results_processor_impl):
+                     canonicalize_sql_results_processor=append_queries_to_query_lister):
     """
     Listens for incoming queries from a mysql query log file display stats.
     """
+
     file = open(log_file)
 
     # Find the size of the file and move to the end
@@ -625,43 +586,34 @@ def query_log_listen(log_file, listen_frequency, listen_window_length,
         lines_to_parse = ''
         parse_now = False
         exit_loop = False
-        query_count = 0
 
         while True:
             try:
                 if parse_now:
                     # search for query embedded in lines
-                    pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))'
+                    pat = QUERY_LOG_PATTERN_FULL_QUERY
                     match = re.search(pat, lines_to_parse)
                     if match:
-                        #print 'match'
-                        #print 'lines_to_parse => {0}'.format(lines_to_parse)
                         query = match.group('query')
-                        #print 'query => {0}'.format(query)
-                        query_count += 1
-                        #print '{0}. {1}'.format(query_count, query)
                         canonicalize_sql_results = canonicalize_sql(query)
-                        canonicalize_sql_results_processor(canonicalize_sql_results)
+                        canonicalize_sql_results_processor(
+                            canonicalize_sql_results)
                         lines_to_parse = ''
-                    #else:
-                    #    print 'no match, lines_to_parse => {0} <='.format(lines_to_parse)
-                    lines_to_parse = line if line else ''
+                    else:
+                        #print 'Could not parse the following: {0}'.format(lines_to_parse)
+                        pass
 
+                    lines_to_parse = line if line else ''
                     if lines_to_parse:
                         # check if we can parse the recent line
                         match = re.search(pat, lines_to_parse)
                         if match:
-                            #print 'match'
-                            #print 'lines_to_parse => {0}'.format(lines_to_parse)
                             query = match.group('query')
-                            #print 'query => {0}'.format(query)
-                            query_count += 1
-                            #print '{0}. {1}'.format(query_count, query)
                             canonicalize_sql_results = canonicalize_sql(query)
-                            canonicalize_sql_results_processor(canonicalize_sql_results)
+                            canonicalize_sql_results_processor(
+                                canonicalize_sql_results)
                             lines_to_parse = ''
-                        #else:
-                        #    print 'no match, lines_to_parse => {0} <='.format(lines_to_parse)
+
                     parse_now = False
 
                     if exit_loop:
@@ -674,16 +626,14 @@ def query_log_listen(log_file, listen_frequency, listen_window_length,
                     time.sleep(listen_frequency)
                     file.seek(where)
                 else:
-                    #print 'line => {0} <='.format(line)
-                    # check this line has the start of a query
-                    pat = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+'
+                    # check if this line has the start of a query
+                    pat = QUERY_LOG_PATTERN_QUERY_START
                     match = re.search(pat, line)
                     if match:
-                        # found match, do we have unparsed lines?
+                        # found match, do we have lines that were not yet parsed?
                         # if yes, parse them now,
                         # then set lines_to_parse = line
                         parse_now = True
-                        #print 'parse_now'
                         continue
                     else:
                         lines_to_parse += line
@@ -694,7 +644,7 @@ def query_log_listen(log_file, listen_frequency, listen_window_length,
                     continue
                 break
     except Exception, e:
-        print 'Exception: {0}'.format(e)
+        print 'Exception in query_log_listen: {0}'.format(e)
         raise
     finally:
         file.close()
@@ -737,76 +687,50 @@ def print_db_counts():
             item_count += 1
             print '{0}. {1} => {2}'.format(item_count, row[1], row[0])
 
+def init_db():
+    """
+    Creates counts table if it does not exist yet.
+    """
+
+    conn = sqlite3.connect(SETTINGS['DB'])
+    with conn:
+        cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS counts(id INTEGER PRIMARY KEY AUTOINCREMENT, statement TEXT UNIQUE, instances INT)")
+
+
 if __name__ == '__main__':
     import argparse
 
-    print '#### sqlcanon: start ####\n'
-
     parser = argparse.ArgumentParser()
-    parser.add_argument('--db', help='The database to use.')
-    parser.add_argument('--disable_collapsed_mode', action='store_true', help='Disable collapsed mode.')
+    parser.add_argument('--db', default='sqlcanon.db', help='The database to use. (default: sqlcannon.db)')
+    parser.add_argument('--disable-collapsed-mode', action='store_true', help='Disable collapsed mode.')
     parser.add_argument('--listen', action='store_true', help='Opens up log file and waits for newly written data.')
-    parser.add_argument('--listen_frequency', default=1, type=int, help='Listening frequency (number of seconds).')
-    parser.add_argument('--listen_window_length', default=5, type=int, help='Length of period of query list filter (number of minutes)')
-    parser.add_argument('--log_file', default='/var/log/mysql/mysql.log', help='Mysql query log file to process.')
-    parser.add_argument('--print_db_counts', action='store_true', help='Prints counts stored in DB at the end of execution.')
-    #group = parser.add_mutually_exclusive_group()
-    #group.add_argument('--sql_file', help='process sql statements contained in an sql file (one statement per line)')
-    #group.add_argument('--mysql_log_file', help='process queries from a mysql log file (mysql general log file format)')
-
+    parser.add_argument('--listen-frequency', default=1, type=int, help='Listening frequency in number of seconds. (default: 1)')
+    parser.add_argument('--listen-window-length', default=5, type=int, help='Length of period of query list filter in number of minutes. (default: 5)')
+    parser.add_argument('--log-file', help='Mysql query log file to process.')
+    parser.add_argument('--print-db-counts', action='store_true', help='Prints counts stored in DB at the end of execution.')
 
     args = parser.parse_args()
-
-    parameterized_sql_counts = {}
-
-    show_results = False
 
     if args.disable_collapsed_mode:
         COLLAPSE_TARGET_PARTS = False
 
-    SETTINGS['DB'] = args.db if args.db else 'sqlcanon.db'
+    SETTINGS['DB'] = args.db
+    init_db()
 
-#    if args.sql_file:
-#        # contents of sql file will be one sql statement per line
-#
-#        try:
-#            parameterized_sql_counts = process_sql_file(args.sql_file)
-#            show_results = True
-#        except Exception, e:
-#            print 'An error has occurred: {0}'.format(e)
-#
-#    elif args.mysql_log_file and not args.listen:
-#
-#        try:
-#            parameterized_sql_counts = process_mysql_log_file(args.mysql_log_file)
-#            show_results = True
-#        except Exception, e:
-#            print 'An error has occurred: {0}'.format(e)
     if args.log_file and args.listen:
-        query_log_listen(log_file=args.log_file, listen_frequency=args.listen_frequency,
+        print 'Listening for new data in {0} (frequency={1}, window_length={2})...'.format(
+            args.log_file, args.listen_frequency, args.listen_window_length)
+        query_log_listen(log_file=args.log_file,
+            listen_frequency=args.listen_frequency,
             listen_window_length=args.listen_window_length)
+    elif args.log_file:
+        print 'Processing contents from log file {0}...'.format(args.log_file)
+        process_log_file(args.log_file)
     else:
         # read from pipe
-        try:
-            parameterized_sql_counts = process_data_from_stdin()
-            show_results = True
-        except Exception, e:
-            print 'An error has occurred: {0}'.format(e)
+        print 'Processing data from stdin...'
+        process_query_log_from_stdin()
 
-
-#    conn = sqlite3.connect(SETTINGS['DB'])
-#    with conn:
-#        cur = conn.cursor()
-#        cur.execute("CREATE TABLE IF NOT EXISTS counts(id INTEGER PRIMARY KEY AUTOINCREMENT, statement TEXT UNIQUE, instances INT)")
-#
-#        for statement, instances in parameterized_sql_counts.iteritems():
-#            cur.execute("SELECT instances FROM counts WHERE statement = ?", (statement,))
-#            row = cur.fetchone()
-#            if row:
-#                instances = row[0] + instances
-#                cur.execute("UPDATE counts SET instances = ? WHERE statement = ?", (instances, statement))
-#            else:
-#                cur.execute("INSERT INTO counts(statement, instances) VALUES(?, ?)", (statement, instances))
-#
     if args.print_db_counts:
         print_db_counts()
