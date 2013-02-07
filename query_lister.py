@@ -54,47 +54,47 @@ class QueryLister:
         #     counts = {
         #         'select * from foo': {
         #             'count': 3,
-        #             'indeces': [0, 1, 4]   # indeces of list items who have the same canonicalized_query
+        #             'indices': [0, 1, 4]   # indices of list items who have the same canonicalized_query
         #         },
         #         'insert into people(name, email) values (n)': {
         #             'count': 2,
-        #             'indeces': [2, 3]
+        #             'indices': [2, 3]
         #         }
         #     }
         counts = {}
 
-        # store the indeces of the items that will be included in
+        # store the indices of the items that will be included in
         # the final result
-        list_indeces = []
+        list_indices = []
 
         # calculate counts
         for index, query_list_item in enumerate(self.query_list):
             dt, query, canonicalized_query, count = query_list_item
             if(dt_start <= dt <= dt_end):
-                list_indeces.append(index)
+                list_indices.append(index)
                 if counts.has_key(canonicalized_query):
                     counts[canonicalized_query]['count'] += 1
                 else:
-                    counts[canonicalized_query] = dict(count=1, indeces=[])
+                    counts[canonicalized_query] = dict(count=1, indices=[])
 
-                # remember indeces of queries that have the same canonicalized query
-                counts[canonicalized_query]['indeces'].append(index)
+                # remember indices of queries that have the same canonicalized query
+                counts[canonicalized_query]['indices'].append(index)
 
         # reflect counts in result (query_list subset)
         for canonicalized_query, info in counts.iteritems():
             count = info['count']
-            indeces = info['indeces']
-            for index in indeces:
+            indices = info['indices']
+            for index in indices:
                 self.query_list[index][3] = count
 
-        if list_indeces:
-            result = self.query_list[min(list_indeces):max(list_indeces) + 1]
+        if list_indices:
+            result = self.query_list[min(list_indices):max(list_indices) + 1]
         else:
             result = []
 
         if remove_older_items:
-            if list_indeces and min(list_indeces) < len(self.query_list):
-                self.query_list = self.query_list[min(list_indeces):]
+            if list_indices and min(list_indices) < len(self.query_list):
+                self.query_list = self.query_list[min(list_indices):]
             else:
                 self.query_list = []
 
