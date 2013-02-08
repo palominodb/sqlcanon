@@ -1,4 +1,9 @@
 from datetime import datetime
+import pprint
+
+import mmh3
+
+PP = pprint.PrettyPrinter(indent=4)
 
 class QueryLister:
     def __init__(self):
@@ -7,14 +12,16 @@ class QueryLister:
         """
 
         # list item will be a list in the following format:
-        #     [dt, query, canonicalized_query, count]
+        #     [dt, query, canonicalized_query, hash, count]
         #
         #     dt:
         #         query date/time
         #     query:
         #         query
         #     canonicalized_query:
-        #         canonicalized query,
+        #         canonicalized query
+        #     hash:
+        #         hash of canonicalized_query
         #     count:
         #         for a given window, number of instances of queries, that are similar to this query, found
         self.query_list = []
@@ -33,7 +40,7 @@ class QueryLister:
         if self.query_list:
             assert self.query_list[len(self.query_list) - 1][0] <= dt
 
-        self.query_list.append([dt, query, canonicalized_query, 0])
+        self.query_list.append([dt, query, canonicalized_query, mmh3.hash(canonicalized_query), 0])
 
     def get_list(self, dt_start, dt_end, remove_older_items=True):
         """
@@ -52,11 +59,11 @@ class QueryLister:
         # Store counts here.
         # This will look like:
         #     counts = {
-        #         'select * from foo': {
+        #         1234: {  # hash
         #             'count': 3,
         #             'indices': [0, 1, 4]   # indices of list items who have the same canonicalized_query
         #         },
-        #         'insert into people(name, email) values (n)': {
+        #         5678: {
         #             'count': 2,
         #             'indices': [2, 3]
         #         }
@@ -69,23 +76,24 @@ class QueryLister:
 
         # calculate counts
         for index, query_list_item in enumerate(self.query_list):
-            dt, query, canonicalized_query, count = query_list_item
+            dt, query, canonicalized_query, hash, count = query_list_item
+
             if(dt_start <= dt <= dt_end):
                 list_indices.append(index)
-                if counts.has_key(canonicalized_query):
-                    counts[canonicalized_query]['count'] += 1
+                if counts.has_key(hash):
+                    counts[hash]['count'] += 1
                 else:
-                    counts[canonicalized_query] = dict(count=1, indices=[])
+                    counts[hash] = dict(count=1, indices=[])
 
                 # remember indices of queries that have the same canonicalized query
-                counts[canonicalized_query]['indices'].append(index)
+                counts[hash]['indices'].append(index)
 
         # reflect counts in result (query_list subset)
-        for canonicalized_query, info in counts.iteritems():
+        for hash, info in counts.iteritems():
             count = info['count']
             indices = info['indices']
             for index in indices:
-                self.query_list[index][3] = count
+                self.query_list[index][4] = count
 
         if list_indices:
             result = self.query_list[min(list_indices):max(list_indices) + 1]

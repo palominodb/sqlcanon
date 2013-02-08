@@ -6,6 +6,7 @@ import re
 from sys import stdin
 import time
 
+import mmh3
 import sqlite3
 import sqlparse
 from sqlparse.tokens import Token
@@ -21,6 +22,13 @@ COLLAPSE_TARGET_PARTS = True
 
 # settings
 SETTINGS = {}
+
+def hash_as_hex_str(hash):
+    """
+    Returns hex representation of hash.
+    """
+
+    return '%08X' % (hash & 0xFFFFFFFF,)
 
 def canonicalizer_default(token):
     """
@@ -428,7 +436,12 @@ def canonicalize_sql(sql):
         parameterized = parameterized.strip(' ;')
 
         result.append(
-            ('{0}'.format(stmt), normalized, parameterized, values)
+            (
+                '{0}'.format(stmt),
+                normalized,
+                parameterized,
+                values
+            )
         )
     return result
 
@@ -452,8 +465,7 @@ def db_increment_canonicalized_query_count_from_results(results):
     for result in results:
         query, _, canonicalized_query, _ = result
         print 'Query: {0}'.format(query)
-        db_increment_canonicalized_query_count(
-            canonicalized_query if canonicalized_query else 'UNKNOWN')
+        db_increment_canonicalized_query_count(canonicalized_query)
 
 def process_query_log(source,
                       canonicalize_sql_results_processor=db_increment_canonicalized_query_count_from_results):
@@ -550,8 +562,8 @@ def append_queries_to_query_lister(results):
 
     for result in results:
         query, _, canonicalized_query, _ = result
-        db_increment_canonicalized_query_count(
-            canonicalized_query if canonicalized_query else 'UNKNOWN')
+        canonicalized_query = canonicalized_query if canonicalized_query else 'UNKNOWN'
+        db_increment_canonicalized_query_count(canonicalized_query)
         QUERY_LISTER.append_query(query=query,
             canonicalized_query=canonicalized_query)
 
@@ -563,8 +575,11 @@ def print_queries(listen_window_length):
     print
     print '#### Queries found in the last {0} minutes:'.format(listen_window_length)
     if result:
-        for dt, query, canonicalized_query, count in result:
-            print dt.strftime('%Y-%m-%d %H:%M:%S %f'), '[{0}{1}]'.format(count, '' if canonicalized_query else '-unknown'), query
+        for dt, query, canonicalized_query, hash, count in result:
+            print dt.strftime('%Y-%m-%d %H:%M:%S %f'), \
+                '[count:{0}{1}]'.format(count, '-unknown' if canonicalized_query == 'UNKNOWN' else ''), \
+                '[hash:{0}]'.format(hash_as_hex_str(hash)), \
+                query
     else:
         print '(None)'
 
@@ -649,23 +664,39 @@ def query_log_listen(log_file, listen_frequency, listen_window_length,
     finally:
         file.close()
 
-def db_increment_canonicalized_query_count(canonicalized_query, count=1):
+def db_increment_canonicalized_query_count(canonicalized_query, hash=None, count=1):
     """
     Increments count on database.
     """
 
+    if not canonicalized_query:
+        canonicalized_query = 'UNKNOWN'
+        # recompute hash
+        hash = mmh3.hash(canonicalized_query)
+
+    if hash is None:
+        hash = mmh3.hash(canonicalized_query)
+
     conn = sqlite3.connect(SETTINGS['DB'])
     with conn:
         cur = conn.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS counts(id INTEGER PRIMARY KEY AUTOINCREMENT, statement TEXT UNIQUE, instances INT)")
-
-        cur.execute("SELECT instances FROM counts WHERE statement = ?", (canonicalized_query,))
+        cur.execute("""
+            SELECT instances FROM counts WHERE hash = ?
+            """, (hash,))
         row = cur.fetchone()
         if row:
             count = row[0] + count
-            cur.execute("UPDATE counts SET instances = ? WHERE statement = ?", (count, canonicalized_query))
+            cur.execute("""
+                UPDATE counts
+                SET
+                    instances = ?
+                WHERE hash = ?
+                """, (count, hash))
         else:
-            cur.execute("INSERT INTO counts(statement, instances) VALUES(?, ?)", (canonicalized_query, count))
+            cur.execute("""
+                INSERT INTO counts(statement, hash, instances)
+                VALUES(?, ?, ?)
+                """, (canonicalized_query, hash, count))
 
 def print_db_counts():
     """
@@ -695,7 +726,14 @@ def init_db():
     conn = sqlite3.connect(SETTINGS['DB'])
     with conn:
         cur = conn.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS counts(id INTEGER PRIMARY KEY AUTOINCREMENT, statement TEXT UNIQUE, instances INT)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS counts(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                statement TEXT UNIQUE,
+                hash INT,
+                instances INT)
+            """
+            )
 
 
 if __name__ == '__main__':
