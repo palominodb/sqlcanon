@@ -743,7 +743,6 @@ if __name__ == '__main__':
     parser.add_argument('--db', default='sqlcanon.db', help='The database to use. (default: sqlcannon.db)')
     parser.add_argument('--disable-collapsed-mode', action='store_true', help='Disable collapsed mode.')
     parser.add_argument('--listen', action='store_true', help='Opens up log file and waits for newly written data.')
-    parser.add_argument('--listen-frequency', default=1, type=int, help='Listening frequency in number of seconds. (default: 1)')
     parser.add_argument('--listen-window-length', default=5, type=int, help='Length of period of query list filter in number of minutes. (default: 5)')
     parser.add_argument('--log-file', help='Mysql query log file to process.')
     parser.add_argument('--print-db-counts', action='store_true', help='Prints counts stored in DB at the end of execution.')
@@ -757,10 +756,10 @@ if __name__ == '__main__':
     init_db()
 
     if args.log_file and args.listen:
-        print 'Listening for new data in {0} (frequency={1}, window_length={2})...'.format(
-            args.log_file, args.listen_frequency, args.listen_window_length)
+        print 'Listening for new data in {0} (window_length={1})...'.format(
+            args.log_file, args.listen_window_length)
         query_log_listen(log_file=args.log_file,
-            listen_frequency=args.listen_frequency,
+            listen_frequency=1,
             listen_window_length=args.listen_window_length)
     elif args.log_file:
         print 'Processing contents from log file {0}...'.format(args.log_file)
