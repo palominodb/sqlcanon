@@ -304,42 +304,42 @@ class QueryListerTests(unittest.TestCase):
         result = self.lister.get_list(self.dt_now - timedelta(minutes=5),
             self.dt_now - timedelta(minutes=3))
         self.assertEqual(len(result), 3)
-        counts = zip(*result)[3]
+        counts = zip(*result)[4]
         self.assertEqual(counts, (2, 2, 1))
 
     def test_get_list_2(self):
         result = self.lister.get_list(self.dt_now - timedelta(minutes=4),
             self.dt_now - timedelta(minutes=2))
         self.assertEqual(len(result), 3)
-        counts = zip(*result)[3]
+        counts = zip(*result)[4]
         self.assertEqual(counts, (1, 1, 1))
 
     def test_get_list_3(self):
         result = self.lister.get_list(self.dt_now - timedelta(minutes=3),
             self.dt_now - timedelta(minutes=1))
         self.assertEqual(len(result), 3)
-        counts = zip(*result)[3]
+        counts = zip(*result)[4]
         self.assertEqual(counts, (1, 2, 2))
 
     def test_get_list_4(self):
         result = self.lister.get_list(self.dt_now - timedelta(minutes=2),
             self.dt_now)
         self.assertEqual(len(result), 3)
-        counts = zip(*result)[3]
+        counts = zip(*result)[4]
         self.assertEqual(counts, (3, 3, 3))
 
     def test_get_list_5(self):
         result = self.lister.get_list(self.dt_now - timedelta(minutes=1),
             self.dt_now + timedelta(minutes=1))
         self.assertEqual(len(result), 2)
-        counts = zip(*result)[3]
+        counts = zip(*result)[4]
         self.assertEqual(counts, (2, 2))
 
     def test_get_list_6(self):
         result = self.lister.get_list(self.dt_now,
             self.dt_now + timedelta(minutes=2))
         self.assertEqual(len(result), 1)
-        counts = zip(*result)[3]
+        counts = zip(*result)[4]
         self.assertEqual(counts, (1,))
 
     def test_get_list_7(self):
