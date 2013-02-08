@@ -674,7 +674,7 @@ def db_increment_canonicalized_query_count(canonicalized_query, hash=None, count
         # recompute hash
         hash = mmh3.hash(canonicalized_query)
 
-    if hash is None:
+    if not hash:
         hash = mmh3.hash(canonicalized_query)
 
     conn = sqlite3.connect(SETTINGS['DB'])
