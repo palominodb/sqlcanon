@@ -19,7 +19,7 @@ def process_captured_statement(request):
     try:
         if request.method == 'POST':
             statement = unicode(request.POST['statement'])
-            LOGGER.debug(statement)
+            LOGGER.debug(u'Statement: {0}'.format(statement))
             dt = timezone.now()
             canonicalize_statement_results = canonicalize_statement(statement)
             for statement_orig, statement_normalized, statement_canonicalized, values \
@@ -35,7 +35,6 @@ def process_captured_statement(request):
                     statement=statement_orig,
                     canonicalized_statement=statement_canonicalized,
                     canonicalized_statement_hash=hash,
-                    instances=1
                 )
 
 

@@ -6,7 +6,7 @@ class CanonicalizedStatementAdmin(admin.ModelAdmin):
 
 class CapturedStatementAdmin(admin.ModelAdmin):
     list_display = ('id', 'dt', 'statement', 'canonicalized_statement',
-                    'canonicalized_statement_hash', 'instances')
+                    'canonicalized_statement_hash')
 
 admin.site.register(CanonicalizedStatement, CanonicalizedStatementAdmin)
 admin.site.register(CapturedStatement, CapturedStatementAdmin)

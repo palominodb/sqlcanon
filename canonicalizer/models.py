@@ -15,9 +15,8 @@ class CapturedStatement(models.Model):
     statement = models.TextField()
     canonicalized_statement = models.TextField()
     canonicalized_statement_hash = models.IntegerField()
-    instances = models.IntegerField(default=0)
 
     def __unicode__(self):
-        return u'<CapturedStatement id={0}, dt={1}, statement={2}>, count={3}'.format(
-            self.id, self.dt, self.statement, self.instances
+        return u'<CapturedStatement id={0}, dt={1}, statement={2}>'.format(
+            self.id, self.dt, self.statement
         )
