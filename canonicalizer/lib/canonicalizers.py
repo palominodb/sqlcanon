@@ -1,6 +1,7 @@
-#!/usr/bin/env python
-
 from datetime import datetime, timedelta
+import logging
+from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
 import os
 import re
 from sys import stdin
@@ -11,7 +12,13 @@ import sqlite3
 import sqlparse
 from sqlparse.tokens import Token
 
-from query_lister import QueryLister
+from canonicalizer.lib.query_lister import QueryLister
+from canonicalizer.lib.utils import int_to_hex_str
+from canonicalizer.models import CanonicalizedStatement
+
+LOGGER = logging.getLogger(__name__)
+
+STATEMENT_UNKNOWN = 'UNKNOWN'
 
 QUERY_LOG_PATTERN_QUERY_START = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+'
 
@@ -109,7 +116,7 @@ CANONICALIZERS = {
     Token.Literal.Number.Float: canonicalizer_number_float,
     Token.Literal.String.Single: canonicalizer_string_single,
     Token.Literal.String.Symbol: canonicalizer_string_symbol,
-}
+    }
 
 def canonicalizer_parenthesis(token):
     """
@@ -174,8 +181,8 @@ def canonicalizer_where(token):
                 (next_child_token and next_child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline)) or
                 (next_nonws_token and next_nonws_token.ttype in (Token.Operator.Comparison,)) or
                 (prev_nonws_token and prev_nonws_token.ttype in (Token.Operator.Comparison,))
-            )):
-                c_normalized, c_parameterized, c_values = ('', '', [])
+                )):
+            c_normalized, c_parameterized, c_values = ('', '', [])
         elif COLLAPSE_TARGET_PARTS and child_token.ttype in (Token.Keyword,):
             if child_token.normalized == 'IN':
                 found_in_keyword = True
@@ -183,9 +190,9 @@ def canonicalizer_where(token):
                 if found_in_keyword:
                     found_new_keyword_after_in_keyword = True
             c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
-        elif COLLAPSE_TARGET_PARTS and child_token.is_group() and \
-            type(child_token) is sqlparse.sql.Parenthesis and \
-            found_in_keyword and not found_new_keyword_after_in_keyword:
+        elif COLLAPSE_TARGET_PARTS and child_token.is_group() and\
+             type(child_token) is sqlparse.sql.Parenthesis and\
+             found_in_keyword and not found_new_keyword_after_in_keyword:
             c_normalized, c_parameterized, c_values = ('(N)', '(N)', [])
         else:
             c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
@@ -247,8 +254,8 @@ def canonicalizer_comparison(token):
     return (normalized, parameterized, values)
 
 SQL_FUNCTIONS = ('AVG', 'BIT_AND', 'BIT_OR', 'BIT_XOR', 'COUNT', 'GROUP_CONCAT',
-    'MAX', 'MIN', 'STD', 'STDDEV_POP', 'STDDEV_SAMP', 'STDDEV', 'SUM',
-    'VAR_POP', 'VAR_SAMP', 'VARIANCE', )
+                 'MAX', 'MIN', 'STD', 'STDDEV_POP', 'STDDEV_SAMP', 'STDDEV', 'SUM',
+                 'VAR_POP', 'VAR_SAMP', 'VARIANCE', )
 
 def canonicalizer_function(token):
     """
@@ -290,7 +297,7 @@ CANONICALIZERS_BY_CLASS_TYPE = {
     sqlparse.sql.Comparison: canonicalizer_comparison,
     sqlparse.sql.Function: canonicalizer_function,
     sqlparse.sql.Where: canonicalizer_where,
-}
+    }
 
 
 def canonicalize_token(token):
@@ -362,18 +369,18 @@ def canonicalizer_statement_insert(stmt):
                 if found_values_keyword:
                     found_new_keyword_afer_values_keyword = True
             t_normalized, t_parameterized, t_values = canonicalize_token(token)
-        elif COLLAPSE_TARGET_PARTS and token.is_group() and \
-            type(token) is sqlparse.sql.Parenthesis and \
-            found_values_keyword and not found_new_keyword_afer_values_keyword:
+        elif COLLAPSE_TARGET_PARTS and token.is_group() and\
+             type(token) is sqlparse.sql.Parenthesis and\
+             found_values_keyword and not found_new_keyword_afer_values_keyword:
 
-            if not first_parenthesis_after_values_keyword:
+            if first_parenthesis_after_values_keyword is None:
                 first_parenthesis_after_values_keyword = token
             if first_parenthesis_after_values_keyword == token:
                 t_normalized, t_parameterized, t_values = ('(N)', '(N)', [])
             else:
                 t_normalized, t_parameterized, t_values = ('', '', [])
-        elif COLLAPSE_TARGET_PARTS and token.ttype in (Token.Punctuation,) \
-            and found_values_keyword and not found_new_keyword_afer_values_keyword:
+        elif COLLAPSE_TARGET_PARTS and token.ttype in (Token.Punctuation,)\
+             and found_values_keyword and not found_new_keyword_afer_values_keyword:
             t_normalized, t_parameterized, t_values = ('', '', [])
         else:
             t_normalized, t_parameterized, t_values = canonicalize_token(token)
@@ -387,25 +394,25 @@ def canonicalizer_statement_insert(stmt):
 
     return (normalized, parameterized, values)
 
-def canonicalize_sql(sql):
+def canonicalize_statement(statement):
     """
-    Canonicalizes sql statement(s).
+    Canonicalizes statement(s).
 
-    Returns a list of (orig sql, canonicalized sql, parameterized sql, values for parameterized sql)
+    Returns a list of (original statement, normalized statement, canonicalized statement, values for canonicalized statement)
     """
     result = []
 
-    parsed = sqlparse.parse(sql)
+    parsed = sqlparse.parse(statement)
 
     for stmt in parsed:
         #print 'stmt => {0} <='.format(stmt)
         #print 'stmt.tokens => {0}'.format(stmt.tokens)
         if stmt.get_type() == 'INSERT':
             #print 'stmt.get_type() => {0}'.format(stmt.get_type())
-            stmt_normalized, stmt_parameterized, stmt_values = canonicalizer_statement_insert(stmt)
-            result.append(('{0}'.format(stmt), stmt_normalized, stmt_parameterized, stmt_values))
+            stmt_normalized, stmt_canonicalized, stmt_values = canonicalizer_statement_insert(stmt)
+            result.append(('{0}'.format(stmt), stmt_normalized, stmt_canonicalized, stmt_values))
             continue
-        elif stmt.get_type() == 'UNKNOWN':
+        elif stmt.get_type() == STATEMENT_UNKNOWN:
             #print 'UNKNOWN: => {0} <='.format(stmt)
             result.append(
                 ('{0}'.format(stmt), None, None, [])
@@ -413,7 +420,7 @@ def canonicalize_sql(sql):
             continue
 
         normalized = ''
-        parameterized = ''
+        canonicalized = ''
         values = []
         for token in stmt.tokens:
             token_index = stmt.token_index(token)
@@ -422,27 +429,24 @@ def canonicalize_sql(sql):
             if (token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline) and
                 next_token and
                 next_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline)):
-                t_normalized, t_parameterized, t_values = ('', '', [])
+                t_normalized, t_canonicalized, t_values = ('', '', [])
             elif (type(token) is sqlparse.sql.Identifier) and prev_token.ttype in (Token.Operator,):
-                t_normalized, t_parameterized, t_values = (token.normalized, token.normalized, [])
+                t_normalized, t_canonicalized, t_values = (token.normalized, token.normalized, [])
             else:
-                t_normalized, t_parameterized, t_values = canonicalize_token(token)
+                t_normalized, t_canonicalized, t_values = canonicalize_token(token)
             normalized += t_normalized
-            parameterized += t_parameterized
+            canonicalized += t_canonicalized
             for t_value in t_values:
                 values.append(t_value)
 
         normalized = normalized.strip(' ;')
-        parameterized = parameterized.strip(' ;')
+        canonicalized = canonicalized.strip(' ;')
 
-        result.append(
-            (
-                '{0}'.format(stmt),
-                normalized,
-                parameterized,
-                values
-            )
-        )
+        result.append((
+            '{0}'.format(stmt),
+            normalized,
+            canonicalized,
+            values))
     return result
 
 def process_log_file(log_file):
@@ -465,7 +469,7 @@ def db_increment_canonicalized_query_count_from_results(results):
     for result in results:
         query, _, canonicalized_query, _ = result
         print 'Query: {0}'.format(query)
-        db_increment_canonicalized_query_count(canonicalized_query)
+        db_increment_canonicalized_statement_count(canonicalized_query)
 
 def process_query_log(source,
                       canonicalize_sql_results_processor=db_increment_canonicalized_query_count_from_results):
@@ -490,7 +494,7 @@ def process_query_log(source,
                     match = re.search(pat, lines_to_parse)
                     if match:
                         query = match.group('query')
-                        canonicalize_sql_results = canonicalize_sql(query)
+                        canonicalize_sql_results = canonicalize_statement(query)
                         canonicalize_sql_results_processor(
                             canonicalize_sql_results)
                         lines_to_parse = ''
@@ -504,7 +508,7 @@ def process_query_log(source,
                         match = re.search(pat, lines_to_parse)
                         if match:
                             query = match.group('query')
-                            canonicalize_sql_results = canonicalize_sql(query)
+                            canonicalize_sql_results = canonicalize_statement(query)
                             canonicalize_sql_results_processor(
                                 canonicalize_sql_results)
                             lines_to_parse = ''
@@ -562,13 +566,13 @@ def append_queries_to_query_lister(results):
 
     for result in results:
         query, _, canonicalized_query, _ = result
-        canonicalized_query = canonicalized_query if canonicalized_query else 'UNKNOWN'
-        db_increment_canonicalized_query_count(canonicalized_query)
+        canonicalized_query = canonicalized_query if canonicalized_query else STATEMENT_UNKNOWN
+        db_increment_canonicalized_statement_count(canonicalized_query)
         QUERY_LISTER.append_query(query=query,
             canonicalized_query=canonicalized_query)
 
 def print_queries(listen_window_length):
-    dt_now = datetime.now()
+    dt_now = timezone.now()
     result = QUERY_LISTER.get_list(
         dt_now - timedelta(minutes=listen_window_length),
         dt_now)
@@ -576,10 +580,10 @@ def print_queries(listen_window_length):
     print '#### Queries found in the last {0} minutes:'.format(listen_window_length)
     if result:
         for dt, query, canonicalized_query, hash, count in result:
-            print dt.strftime('%Y-%m-%d %H:%M:%S %f'), \
-                '[count:{0}{1}]'.format(count, '-unknown' if canonicalized_query == 'UNKNOWN' else ''), \
-                '[hash:{0}]'.format(hash_as_hex_str(hash)), \
-                query
+            print dt.strftime('%Y-%m-%d %H:%M:%S %f'),\
+            '[count:{0}{1}]'.format(count, '-unknown' if canonicalized_query == STATEMENT_UNKNOWN else ''),\
+            '[hash:{0}]'.format(hash_as_hex_str(hash)),\
+            query
     else:
         print '(None)'
 
@@ -610,7 +614,7 @@ def query_log_listen(log_file, listen_frequency, listen_window_length,
                     match = re.search(pat, lines_to_parse)
                     if match:
                         query = match.group('query')
-                        canonicalize_sql_results = canonicalize_sql(query)
+                        canonicalize_sql_results = canonicalize_statement(query)
                         canonicalize_sql_results_processor(
                             canonicalize_sql_results)
                         lines_to_parse = ''
@@ -624,7 +628,7 @@ def query_log_listen(log_file, listen_frequency, listen_window_length,
                         match = re.search(pat, lines_to_parse)
                         if match:
                             query = match.group('query')
-                            canonicalize_sql_results = canonicalize_sql(query)
+                            canonicalize_sql_results = canonicalize_statement(query)
                             canonicalize_sql_results_processor(
                                 canonicalize_sql_results)
                             lines_to_parse = ''
@@ -664,39 +668,52 @@ def query_log_listen(log_file, listen_frequency, listen_window_length,
     finally:
         file.close()
 
-def db_increment_canonicalized_query_count(canonicalized_query, hash=None, count=1):
+def db_increment_canonicalized_statement_count(canonicalized_statement,
+                                               canonicalized_statement_hash=None,
+                                               count=1):
     """
     Increments count on database.
     """
 
-    if not canonicalized_query:
-        canonicalized_query = 'UNKNOWN'
-        # recompute hash
-        hash = mmh3.hash(canonicalized_query)
+    if not canonicalized_statement:
+        canonicalized_statement = STATEMENT_UNKNOWN
+        # recompute canonicalized_statement_hash
+        canonicalized_statement_hash = mmh3.hash(canonicalized_statement)
 
-    if not hash:
-        hash = mmh3.hash(canonicalized_query)
+    if canonicalized_statement_hash is None:
+        canonicalized_statement_hash = mmh3.hash(canonicalized_statement)
 
-    conn = sqlite3.connect(SETTINGS['DB'])
-    with conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT instances FROM counts WHERE hash = ?
-            """, (hash,))
-        row = cur.fetchone()
-        if row:
-            count = row[0] + count
-            cur.execute("""
-                UPDATE counts
-                SET
-                    instances = ?
-                WHERE hash = ?
-                """, (count, hash))
-        else:
-            cur.execute("""
-                INSERT INTO counts(statement, hash, instances)
-                VALUES(?, ?, ?)
-                """, (canonicalized_query, hash, count))
+    #conn = sqlite3.connect(SETTINGS['DB'])
+    #with conn:
+    #    cur = conn.cursor()
+    #    cur.execute("""
+    #        SELECT instances FROM counts WHERE canonicalized_statement_hash = ?
+    #        """, (canonicalized_statement_hash,))
+    #    row = cur.fetchone()
+    #    if row:
+    #        count = row[0] + count
+    #        cur.execute("""
+    #            UPDATE counts
+    #            SET
+    #                instances = ?
+    #            WHERE canonicalized_statement_hash = ?
+    #            """, (count, canonicalized_statement_hash))
+    #    else:
+    #        cur.execute("""
+    #            INSERT INTO counts(statement, canonicalized_statement_hash, instances)
+    #            VALUES(?, ?, ?)
+    #            """, (canonicalized_statement, canonicalized_statement_hash, count))
+
+    try:
+        info = CanonicalizedStatement.objects.get(
+            hash=canonicalized_statement_hash)
+        info.instances += count
+        info.save()
+    except ObjectDoesNotExist:
+        info = CanonicalizedStatement.objects.create(
+            statement=canonicalized_statement,
+            hash=canonicalized_statement_hash,
+            instances=count)
 
 def print_db_counts():
     """
@@ -706,17 +723,29 @@ def print_db_counts():
     print
     print 'Counts stored in database:'
     print '=' * 80
+
     item_count = 0
-    conn = sqlite3.connect(SETTINGS['DB'])
-    with conn:
-        cur = conn.cursor()
-        cur.execute("SELECT statement, instances FROM counts")
-        while True:
-            row = cur.fetchone()
-            if not row:
-                break
-            item_count += 1
-            print '{0}. {1} => {2}'.format(item_count, row[1], row[0])
+
+    #conn = sqlite3.connect(SETTINGS['DB'])
+    #with conn:
+    #    cur = conn.cursor()
+    #    cur.execute("SELECT statement, instances FROM counts")
+    #    while True:
+    #        row = cur.fetchone()
+    #        if row is None:
+    #            break
+    #        item_count += 1
+    #        print '{0}. {1} => {2}'.format(item_count, row[1], row[0])
+
+    statements = CanonicalizedStatement.objects.all()
+    for statement in statements:
+        item_count += 1
+        print '{0}. [count={1}] [hash={2}] {3}'.format(
+            item_count,
+            statement.instances,
+            int_to_hex_str(statement.hash),
+            statement.statement
+        )
 
 def init_db():
     """
@@ -733,7 +762,7 @@ def init_db():
                 hash INT,
                 instances INT)
             """
-            )
+        )
 
 
 if __name__ == '__main__':

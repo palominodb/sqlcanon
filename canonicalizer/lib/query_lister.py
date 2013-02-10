@@ -1,6 +1,8 @@
 from datetime import datetime
 import pprint
 
+from django.utils import timezone
+
 import mmh3
 
 PP = pprint.PrettyPrinter(indent=4)
@@ -32,8 +34,8 @@ class QueryLister:
         Appends query to list.
         """
 
-        if not dt: 
-            dt = datetime.now()
+        if dt is None:
+            dt = timezone.now()
 
         # order of items on list is expected to be ordered by datetime in ascending order
         # do not allow violation of this rule

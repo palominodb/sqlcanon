@@ -24,6 +24,7 @@ def process_packet(pktlen, data, timestamp):
     params = dict(statement=payload)
     target = 'http://localhost:8000/canonicalizer/process_captured_statement/'
     params = urllib.urlencode(params)
+    print params
     try:
         handler = urllib2.urlopen(target, params)
         print 'handler.code:', handler.code

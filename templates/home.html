@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SQL Canonicalizer</title>
+</head>
+<body>
+    <p>
+        <strong>Pages:</strong>
+    </p>
+
+    <p>
+        Statements found in the last 5 minutes: <br/>
+        <a href="{% url canonicalizer_last_statements 5 %}">
+            {% url canonicalizer_last_statements 5 %}
+        </a>
+    </p>
+</body>
+</html>

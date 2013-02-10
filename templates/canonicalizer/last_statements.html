@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="refresh" content="5"/>
+    <title>Statements Found In The Last {{ window_length }} Minute(s).</title>
+</head>
+<body>
+    {% if statements %}
+    <table>
+        <tr>
+            <th>Date</th>
+            <th>Count</th>
+            <th>Hash</th>
+            <th>Statement</th>
+        </tr>
+
+
+
+        {% for statement, count, hash in statements %}
+
+        <tr>
+            <td>{{ statement.dt|date:"Y-m-d H:i" }}</td>
+            <td style="text-align: right;">{% if statement.canonicalized_statement == 'UNKNOWN' %}(unknown) {% endif %}{{ count }}</td>
+            <td>{{ hash }}</td>
+            <td>{{ statement.statement }}</td>
+        </tr>
+
+        {% endfor %}
+
+    </table>
+
+    {% else %}
+        No statements found.
+    {% endif %}
+</body>
+</html>
