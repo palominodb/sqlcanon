@@ -366,7 +366,7 @@ def canonicalizer_statement_insert(stmt):
             type(token) is sqlparse.sql.Parenthesis and \
             found_values_keyword and not found_new_keyword_afer_values_keyword:
 
-            if first_parenthesis_after_values_keyword is None:
+            if not first_parenthesis_after_values_keyword:
                 first_parenthesis_after_values_keyword = token
             if first_parenthesis_after_values_keyword == token:
                 t_normalized, t_parameterized, t_values = ('(N)', '(N)', [])
@@ -674,7 +674,7 @@ def db_increment_canonicalized_query_count(canonicalized_query, hash=None, count
         # recompute hash
         hash = mmh3.hash(canonicalized_query)
 
-    if hash is None:
+    if not hash:
         hash = mmh3.hash(canonicalized_query)
 
     conn = sqlite3.connect(SETTINGS['DB'])
@@ -713,7 +713,7 @@ def print_db_counts():
         cur.execute("SELECT statement, instances FROM counts")
         while True:
             row = cur.fetchone()
-            if row is None:
+            if not row:
                 break
             item_count += 1
             print '{0}. {1} => {2}'.format(item_count, row[1], row[0])
