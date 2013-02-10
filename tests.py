@@ -293,7 +293,7 @@ class QueryListerTests(unittest.TestCase):
 
         for dt, query in zip(dts, queries):
             query, _, canonicalized_query, _ = sqlcanon.canonicalize_sql(query)[0]
-            lister.append_query(query=query, canonicalized_query=canonicalized_query, dt=dt)
+            lister.append_statement(statement=query, canonicalized_statement=canonicalized_query, dt=dt)
 
 
     def tearDown(self):

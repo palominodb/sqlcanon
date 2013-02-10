@@ -27,21 +27,11 @@ QUERY_LOG_PATTERN_FULL_QUERY = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<q
 # collapse target parts (for now target parts are in and values)
 COLLAPSE_TARGET_PARTS = True
 
-# settings
-SETTINGS = {}
-
-def hash_as_hex_str(hash):
-    """
-    Returns hex representation of hash.
-    """
-
-    return '%08X' % (hash & 0xFFFFFFFF,)
-
 def canonicalizer_default(token):
     """
     Default canonicalizer.
 
-    Returns data in this format (normalized sql, paramtererized sql, values)
+    Returns data in this format (normalized statement, canonicalized statement, values)
     """
     return (token.normalized, token.normalized, [])
 
@@ -49,7 +39,7 @@ def canonicalizer_whitespace(token):
     """
     Reduces whitespaces into a single space.
 
-    Returns data in this format (normalized sql, paramtererized sql, values)
+    Returns data in this format (normalized statement, canonicalized statement, values)
     """
     return (' ', ' ', [])
 
@@ -70,9 +60,9 @@ def canonicalizer_number_integer(token):
     """
 
     normalized = token.normalized
-    parameterized = '%d'
+    canonicalized = '%d'
     values = [int(token.value)]
-    return (normalized, parameterized, values)
+    return (normalized, canonicalized, values)
 
 def canonicalizer_number_float(token):
     """
@@ -80,9 +70,9 @@ def canonicalizer_number_float(token):
     """
 
     normalized = token.normalized
-    parameterized = '%f'
+    canonicalized = '%f'
     values = [float(token.value)]
-    return (normalized, parameterized, values)
+    return (normalized, canonicalized, values)
 
 def canonicalizer_string_single(token):
     """
@@ -90,9 +80,9 @@ def canonicalizer_string_single(token):
     """
 
     normalized = token.normalized
-    parameterized = '%s'
+    canonicalized = '%s'
     values = [token.value.strip("'").replace(r"\'", "'")]
-    return (normalized, parameterized, values)
+    return (normalized, canonicalized, values)
 
 def canonicalizer_string_symbol(token):
     """
@@ -103,9 +93,9 @@ def canonicalizer_string_symbol(token):
     """
 
     normalized = r"""'{0}'""".format(token.normalized.strip('"').replace(r'\"', '"'))
-    parameterized = '%s'
+    canonicalized = '%s'
     values = [token.value.strip('"').replace(r'\"', '"')]
-    return (normalized, parameterized, values)
+    return (normalized, canonicalized, values)
 
 # canonicalizers based on token type
 CANONICALIZERS = {
@@ -116,7 +106,7 @@ CANONICALIZERS = {
     Token.Literal.Number.Float: canonicalizer_number_float,
     Token.Literal.String.Single: canonicalizer_string_single,
     Token.Literal.String.Symbol: canonicalizer_string_symbol,
-    }
+}
 
 def canonicalizer_parenthesis(token):
     """
@@ -128,7 +118,7 @@ def canonicalizer_parenthesis(token):
     assert token.is_group()
 
     normalized = ''
-    parameterized = ''
+    canonicalized = ''
     values = []
 
     for child_token in token.tokens:
@@ -139,17 +129,17 @@ def canonicalizer_parenthesis(token):
             if ((prev_child_token and prev_child_token.ttype in (Token.Keyword,)) or
                 (next_child_token and next_child_token.ttype in (Token.Keyword,))):
                 # maintain a single space if previous or next token is a keyword
-                c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+                c_normalized, c_canonicalized, c_values = canonicalize_token(child_token)
             else:
-                c_normalized, c_parameterized, c_values = ('', '', [])
+                c_normalized, c_canonicalized, c_values = ('', '', [])
         else:
-            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+            c_normalized, c_canonicalized, c_values = canonicalize_token(child_token)
         normalized += c_normalized
-        parameterized += c_parameterized
+        canonicalized += c_canonicalized
         for c_value in c_values:
             values.append(c_value)
 
-    return (normalized, parameterized, values)
+    return (normalized, canonicalized, values)
 
 def canonicalizer_where(token):
     """
@@ -161,7 +151,7 @@ def canonicalizer_where(token):
     assert token.is_group()
 
     normalized = ''
-    parameterized = ''
+    canonicalized = ''
     values = []
 
     found_in_keyword = False
@@ -182,26 +172,26 @@ def canonicalizer_where(token):
                 (next_nonws_token and next_nonws_token.ttype in (Token.Operator.Comparison,)) or
                 (prev_nonws_token and prev_nonws_token.ttype in (Token.Operator.Comparison,))
                 )):
-            c_normalized, c_parameterized, c_values = ('', '', [])
+            c_normalized, c_canonicalized, c_values = ('', '', [])
         elif COLLAPSE_TARGET_PARTS and child_token.ttype in (Token.Keyword,):
             if child_token.normalized == 'IN':
                 found_in_keyword = True
             else:
                 if found_in_keyword:
                     found_new_keyword_after_in_keyword = True
-            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+            c_normalized, c_canonicalized, c_values = canonicalize_token(child_token)
         elif COLLAPSE_TARGET_PARTS and child_token.is_group() and\
              type(child_token) is sqlparse.sql.Parenthesis and\
              found_in_keyword and not found_new_keyword_after_in_keyword:
-            c_normalized, c_parameterized, c_values = ('(N)', '(N)', [])
+            c_normalized, c_canonicalized, c_values = ('(N)', '(N)', [])
         else:
-            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+            c_normalized, c_canonicalized, c_values = canonicalize_token(child_token)
         normalized += c_normalized
-        parameterized += c_parameterized
+        canonicalized += c_canonicalized
         for c_value in c_values:
             values.append(c_value)
 
-    return (normalized, parameterized, values)
+    return (normalized, canonicalized, values)
 
 def canonicalizer_identifier_list(token):
     """
@@ -213,20 +203,20 @@ def canonicalizer_identifier_list(token):
     assert token.is_group()
 
     normalized = ''
-    parameterized = ''
+    canonicalized = ''
     values = []
 
     for child_token in token.tokens:
         if child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline):
-            c_normalized, c_parameterized, c_values = ('', '', [])
+            c_normalized, c_canonicalized, c_values = ('', '', [])
         else:
-            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+            c_normalized, c_canonicalized, c_values = canonicalize_token(child_token)
         normalized += c_normalized
-        parameterized += c_parameterized
+        canonicalized += c_canonicalized
         for c_value in c_values:
             values.append(c_value)
 
-    return (normalized, parameterized, values)
+    return (normalized, canonicalized, values)
 
 def canonicalizer_comparison(token):
     """
@@ -238,20 +228,20 @@ def canonicalizer_comparison(token):
     assert token.is_group()
 
     normalized = ''
-    parameterized = ''
+    canonicalized = ''
     values = []
 
     for child_token in token.tokens:
         if child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline):
-            c_normalized, c_parameterized, c_values = ('', '', [])
+            c_normalized, c_canonicalized, c_values = ('', '', [])
         else:
-            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+            c_normalized, c_canonicalized, c_values = canonicalize_token(child_token)
         normalized += c_normalized
-        parameterized += c_parameterized
+        canonicalized += c_canonicalized
         for c_value in c_values:
             values.append(c_value)
 
-    return (normalized, parameterized, values)
+    return (normalized, canonicalized, values)
 
 SQL_FUNCTIONS = ('AVG', 'BIT_AND', 'BIT_OR', 'BIT_XOR', 'COUNT', 'GROUP_CONCAT',
                  'MAX', 'MIN', 'STD', 'STDDEV_POP', 'STDDEV_SAMP', 'STDDEV', 'SUM',
@@ -269,27 +259,27 @@ def canonicalizer_function(token):
     assert token.is_group()
 
     normalized = ''
-    parameterized = ''
+    canonicalized = ''
     values = []
 
     for child_token in token.tokens:
         if type(child_token) is sqlparse.sql.Identifier:
             name = child_token.normalized
             if name.upper() in SQL_FUNCTIONS:
-                c_normalized, c_parameterized, c_values = (
+                c_normalized, c_canonicalized, c_values = (
                     name.upper(), name.upper(), [])
             else:
-                c_normalized, c_parameterized, c_values = (name, name, [])
+                c_normalized, c_canonicalized, c_values = (name, name, [])
         elif child_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline):
-            c_normalized, c_parameterized, c_values = ('', '', [])
+            c_normalized, c_canonicalized, c_values = ('', '', [])
         else:
-            c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+            c_normalized, c_canonicalized, c_values = canonicalize_token(child_token)
         normalized += c_normalized
-        parameterized += c_parameterized
+        canonicalized += c_canonicalized
         for c_value in c_values:
             values.append(c_value)
 
-    return (normalized, parameterized, values)
+    return (normalized, canonicalized, values)
 
 CANONICALIZERS_BY_CLASS_TYPE = {
     sqlparse.sql.Parenthesis: canonicalizer_parenthesis,
@@ -297,7 +287,7 @@ CANONICALIZERS_BY_CLASS_TYPE = {
     sqlparse.sql.Comparison: canonicalizer_comparison,
     sqlparse.sql.Function: canonicalizer_function,
     sqlparse.sql.Where: canonicalizer_where,
-    }
+}
 
 
 def canonicalize_token(token):
@@ -311,25 +301,25 @@ def canonicalize_token(token):
     #print 'child tokens: {0}'.format(token.tokens if token.is_group() else None)
 
     normalized = ''
-    parameterized = ''
+    canonicalized = ''
     values = []
     if token.ttype and CANONICALIZERS.has_key(token.ttype):
-        normalized, parameterized, values = CANONICALIZERS[token.ttype](token)
+        normalized, canonicalized, values = CANONICALIZERS[token.ttype](token)
     elif token.is_group():
         if CANONICALIZERS_BY_CLASS_TYPE.has_key(type(token)):
-            normalized, parameterized, values = CANONICALIZERS_BY_CLASS_TYPE[type(token)](token)
+            normalized, canonicalized, values = CANONICALIZERS_BY_CLASS_TYPE[type(token)](token)
         else:
             for child_token in token.tokens:
-                c_normalized, c_parameterized, c_values = canonicalize_token(child_token)
+                c_normalized, c_canonicalized, c_values = canonicalize_token(child_token)
                 normalized += c_normalized
-                parameterized += c_parameterized
+                canonicalized += c_canonicalized
                 for c_value in c_values:
                     values.append(c_value)
     else:
         # no assigned canonicalizer for token? use default
-        normalized, parameterized, values = canonicalizer_default(token)
+        normalized, canonicalized, values = canonicalizer_default(token)
 
-    return (normalized, parameterized, values)
+    return (normalized, canonicalized, values)
 
 def canonicalizer_statement_insert(stmt):
     """
@@ -339,7 +329,7 @@ def canonicalizer_statement_insert(stmt):
     assert stmt.get_type() == 'INSERT'
 
     normalized = ''
-    parameterized = ''
+    canonicalized = ''
     values = []
 
     found_values_keyword = False
@@ -358,9 +348,9 @@ def canonicalizer_statement_insert(stmt):
         if (token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline) and
             next_token and
             next_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline)):
-            t_normalized, t_parameterized, t_values = ('', '', [])
+            t_normalized, t_canonicalized, t_values = ('', '', [])
         elif (type(token) is sqlparse.sql.Identifier) and prev_token.ttype in (Token.Operator,):
-            t_normalized, t_parameterized, t_values = (token.normalized, token.normalized, [])
+            t_normalized, t_canonicalized, t_values = (token.normalized, token.normalized, [])
         elif COLLAPSE_TARGET_PARTS and token.ttype in (Token.Keyword,):
             if token.normalized == 'VALUES':
                 found_values_keyword = True
@@ -368,37 +358,43 @@ def canonicalizer_statement_insert(stmt):
             else:
                 if found_values_keyword:
                     found_new_keyword_afer_values_keyword = True
-            t_normalized, t_parameterized, t_values = canonicalize_token(token)
-        elif COLLAPSE_TARGET_PARTS and token.is_group() and\
-             type(token) is sqlparse.sql.Parenthesis and\
+            t_normalized, t_canonicalized, t_values = canonicalize_token(token)
+        elif COLLAPSE_TARGET_PARTS and token.is_group() and \
+             type(token) is sqlparse.sql.Parenthesis and \
              found_values_keyword and not found_new_keyword_afer_values_keyword:
 
-            if first_parenthesis_after_values_keyword is None:
+            if not first_parenthesis_after_values_keyword:
                 first_parenthesis_after_values_keyword = token
             if first_parenthesis_after_values_keyword == token:
-                t_normalized, t_parameterized, t_values = ('(N)', '(N)', [])
+                t_normalized, t_canonicalized, t_values = ('(N)', '(N)', [])
             else:
-                t_normalized, t_parameterized, t_values = ('', '', [])
+                t_normalized, t_canonicalized, t_values = ('', '', [])
         elif COLLAPSE_TARGET_PARTS and token.ttype in (Token.Punctuation,)\
              and found_values_keyword and not found_new_keyword_afer_values_keyword:
-            t_normalized, t_parameterized, t_values = ('', '', [])
+            t_normalized, t_canonicalized, t_values = ('', '', [])
         else:
-            t_normalized, t_parameterized, t_values = canonicalize_token(token)
+            t_normalized, t_canonicalized, t_values = canonicalize_token(token)
         normalized += t_normalized
-        parameterized += t_parameterized
+        canonicalized += t_canonicalized
         for t_value in t_values:
             values.append(t_value)
 
     normalized = normalized.strip(' ;')
-    parameterized = parameterized.strip(' ;')
+    canonicalized = canonicalized.strip(' ;')
 
-    return (normalized, parameterized, values)
+    return (normalized, canonicalized, values)
 
 def canonicalize_statement(statement):
     """
     Canonicalizes statement(s).
 
-    Returns a list of (original statement, normalized statement, canonicalized statement, values for canonicalized statement)
+    Returns a list of
+        (
+            original statement,
+            normalized statement,
+            canonicalized statement,
+            values for canonicalized statement
+        )
     """
     result = []
 
@@ -558,20 +554,20 @@ def process_query_log_from_stdin(
 
 QUERY_LISTER = QueryLister()
 
-def append_queries_to_query_lister(results):
+def append_statements_to_query_lister(results):
     """
-    Append queries in canonicalize_sql_results to QUERY_LISTER.
+    Append statements from canonicalize sql results to QUERY_LISTER.
     This method increments db counts too.
     """
 
     for result in results:
-        query, _, canonicalized_query, _ = result
-        canonicalized_query = canonicalized_query if canonicalized_query else STATEMENT_UNKNOWN
-        db_increment_canonicalized_statement_count(canonicalized_query)
-        QUERY_LISTER.append_query(query=query,
-            canonicalized_query=canonicalized_query)
+        statement, _, canonicalized_statement, _ = result
+        canonicalized_statement = canonicalized_statement if canonicalized_statement else STATEMENT_UNKNOWN
+        db_increment_canonicalized_statement_count(canonicalized_statement)
+        QUERY_LISTER.append_statement(statement=statement,
+            canonicalized_statement=canonicalized_statement)
 
-def print_queries(listen_window_length):
+def print_statements(listen_window_length):
     dt_now = timezone.now()
     result = QUERY_LISTER.get_list(
         dt_now - timedelta(minutes=listen_window_length),
@@ -579,16 +575,17 @@ def print_queries(listen_window_length):
     print
     print '#### Queries found in the last {0} minutes:'.format(listen_window_length)
     if result:
-        for dt, query, canonicalized_query, hash, count in result:
-            print dt.strftime('%Y-%m-%d %H:%M:%S %f'),\
-            '[count:{0}{1}]'.format(count, '-unknown' if canonicalized_query == STATEMENT_UNKNOWN else ''),\
-            '[hash:{0}]'.format(hash_as_hex_str(hash)),\
-            query
+        for dt, statement, canonicalized_statement, hash, count in result:
+            print \
+                dt.strftime('%Y-%m-%d %H:%M:%S %f'),\
+                '[count:{0}{1}]'.format(count, '-unknown' if canonicalized_statement == STATEMENT_UNKNOWN else ''),\
+                '[hash:{0}]'.format(int_to_hex_str(hash)),\
+                statement
     else:
         print '(None)'
 
 def query_log_listen(log_file, listen_frequency, listen_window_length,
-                     canonicalize_sql_results_processor=append_queries_to_query_lister):
+                     canonicalize_sql_results_processor=append_statements_to_query_lister):
     """
     Listens for incoming queries from a mysql query log file display stats.
     """
@@ -641,7 +638,7 @@ def query_log_listen(log_file, listen_frequency, listen_window_length,
                 where = file.tell()
                 line = file.readline()
                 if not line:
-                    print_queries(listen_window_length)
+                    print_statements(listen_window_length)
                     time.sleep(listen_frequency)
                     file.seek(where)
                 else:
@@ -680,7 +677,7 @@ def db_increment_canonicalized_statement_count(canonicalized_statement,
         # recompute canonicalized_statement_hash
         canonicalized_statement_hash = mmh3.hash(canonicalized_statement)
 
-    if canonicalized_statement_hash is None:
+    if not canonicalized_statement_hash:
         canonicalized_statement_hash = mmh3.hash(canonicalized_statement)
 
     #conn = sqlite3.connect(SETTINGS['DB'])
@@ -710,7 +707,7 @@ def db_increment_canonicalized_statement_count(canonicalized_statement,
         info.instances += count
         info.save()
     except ObjectDoesNotExist:
-        info = CanonicalizedStatement.objects.create(
+        CanonicalizedStatement.objects.create(
             statement=canonicalized_statement,
             hash=canonicalized_statement_hash,
             instances=count)
@@ -732,7 +729,7 @@ def print_db_counts():
     #    cur.execute("SELECT statement, instances FROM counts")
     #    while True:
     #        row = cur.fetchone()
-    #        if row is None:
+    #        if not row:
     #            break
     #        item_count += 1
     #        print '{0}. {1} => {2}'.format(item_count, row[1], row[0])
@@ -747,56 +744,3 @@ def print_db_counts():
             statement.statement
         )
 
-def init_db():
-    """
-    Creates counts table if it does not exist yet.
-    """
-
-    conn = sqlite3.connect(SETTINGS['DB'])
-    with conn:
-        cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS counts(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                statement TEXT UNIQUE,
-                hash INT,
-                instances INT)
-            """
-        )
-
-
-if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--db', default='sqlcanon.db', help='The database to use. (default: sqlcannon.db)')
-    parser.add_argument('--disable-collapsed-mode', action='store_true', help='Disable collapsed mode.')
-    parser.add_argument('--listen', action='store_true', help='Opens up log file and waits for newly written data.')
-    parser.add_argument('--listen-window-length', default=5, type=int, help='Length of period of query list filter in number of minutes. (default: 5)')
-    parser.add_argument('--log-file', help='Mysql query log file to process.')
-    parser.add_argument('--print-db-counts', action='store_true', help='Prints counts stored in DB at the end of execution.')
-
-    args = parser.parse_args()
-
-    if args.disable_collapsed_mode:
-        COLLAPSE_TARGET_PARTS = False
-
-    SETTINGS['DB'] = args.db
-    init_db()
-
-    if args.log_file and args.listen:
-        print 'Listening for new data in {0} (window_length={1})...'.format(
-            args.log_file, args.listen_window_length)
-        query_log_listen(log_file=args.log_file,
-            listen_frequency=1,
-            listen_window_length=args.listen_window_length)
-    elif args.log_file:
-        print 'Processing contents from log file {0}...'.format(args.log_file)
-        process_log_file(args.log_file)
-    else:
-        # read from pipe
-        print 'Processing data from stdin...'
-        process_query_log_from_stdin()
-
-    if args.print_db_counts:
-        print_db_counts()
