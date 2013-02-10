@@ -1,0 +1,63 @@
+from datetime import datetime
+import string
+import urllib
+import urllib2
+import pcap
+from construct.protocols.ipstack import ip_stack
+import sys
+import pprint
+
+PP = pprint.PrettyPrinter(indent=4)
+
+def process_packet(pktlen, data, timestamp):
+    if not data:
+        return
+
+    print 'pktlen:', pktlen, 'dt:', datetime.fromtimestamp(timestamp)
+    stack = ip_stack.parse(data)
+    payload = stack.next.next.next
+    print payload
+
+    # MySQL queries start on the 6th char (?)
+    payload = payload[5:]
+
+    params = dict(statement=payload)
+    target = 'http://localhost:8000/canonicalizer/process_captured_statement/'
+    params = urllib.urlencode(params)
+    try:
+        handler = urllib2.urlopen(target, params)
+        print 'handler.code:', handler.code
+    except Exception, e:
+        print 'Exception: {0}'.format(e)
+
+if __name__ == '__main__':
+
+    if len(sys.argv) < 3:
+        print 'usage: {0} <interface> <expr>'.format(sys.argv[0])
+        sys.exit()
+
+    p = pcap.pcapObject()
+    dev = sys.argv[1]
+    net, mask = pcap.lookupnet(dev)
+    print 'net:', net, 'mask:', mask
+
+    # sample dev:
+    #     eth0
+    #     wlan0
+    #     lo
+    p.open_live(dev, 1600, 0, 100)
+
+    # sample filter:
+    #     dst port 3306
+    # see: http://www.manpagez.com/man/7/pcap-filter/
+    p.setfilter(string.join(sys.argv[2:], ' '), 0, 0)
+
+    print 'Press CTRL+C to end capture'
+    try:
+        while True:
+            p.dispatch(1, process_packet)
+    except KeyboardInterrupt:
+        print # Empty line where ^C from CTRL+C is displayed
+        print '%s' % sys.exc_type
+        print 'shutting down'
+        print '%d packets received, %d packets dropped, %d packets dropped by interface' % p.stats()
