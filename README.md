@@ -28,7 +28,7 @@ $ python manage.py runserver
 
 $ sudo python sqlcanon_client <interface> <filter>
 
-Example: $ sudo python sqlcanon_client lo dst port 3306
+Example: $ sudo python sqlcanon_client lo --filter="dst port 3306"
 
 Try connecting to mysql and try some statements: $ mysql -h 127.0.0.1 -u <user>
 

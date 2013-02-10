@@ -6,6 +6,7 @@ import pcap
 from construct.protocols.ipstack import ip_stack
 import sys
 import pprint
+import argparse
 
 PP = pprint.PrettyPrinter(indent=4)
 
@@ -33,12 +34,18 @@ def process_packet(pktlen, data, timestamp):
 
 if __name__ == '__main__':
 
-    if len(sys.argv) < 3:
-        print 'usage: {0} <interface> <expr>'.format(sys.argv[0])
-        sys.exit()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('interface', help='interface to sniff from')
+    parser.add_argument('--filter', default='dst port 3306', help='pcap-filter')
+    args = parser.parse_args()
+
+    #if len(sys.argv) < 3:
+    #    print 'usage: {0} <interface> <expr>'.format(sys.argv[0])
+    #    sys.exit()
 
     p = pcap.pcapObject()
-    dev = sys.argv[1]
+    #dev = sys.argv[1]
+    dev = args.interface
     net, mask = pcap.lookupnet(dev)
     print 'net:', net, 'mask:', mask
 
@@ -51,7 +58,8 @@ if __name__ == '__main__':
     # sample filter:
     #     dst port 3306
     # see: http://www.manpagez.com/man/7/pcap-filter/
-    p.setfilter(string.join(sys.argv[2:], ' '), 0, 0)
+    #p.setfilter(string.join(sys.argv[2:], ' '), 0, 0)
+    p.setfilter(args.filter, 0, 0)
 
     print 'Press CTRL+C to end capture'
     try:
