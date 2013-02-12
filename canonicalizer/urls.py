@@ -8,5 +8,9 @@ urlpatterns = patterns('canonicalizer.views',
 
     url(r'^last_statements/(?P<window_length>\d+)/',
         'last_statements',
-        name='canonicalizer_last_statements')
+        name='canonicalizer_last_statements'),
+
+    url(r'^sparkline/(?P<data>.+)/$',
+        'sparkline',
+        name='canonicalizer_sparkline'),
 )

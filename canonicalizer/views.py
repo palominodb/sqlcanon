@@ -10,7 +10,7 @@ from canonicalizer.lib.canonicalizers import STATEMENT_UNKNOWN, \
     canonicalize_statement, db_increment_canonicalized_statement_count
 from canonicalizer.lib.utils import int_to_hex_str
 from canonicalizer.models import CapturedStatement
-
+from canonicalizer.lib import spark
 
 LOGGER = logging.getLogger(__name__)
 
@@ -63,10 +63,25 @@ def last_statements(request, window_length, template='canonicalizer/last_stateme
         for captured_statement in captured_statements:
             hash = captured_statement.canonicalized_statement_hash
             count = counts.get(hash, 1)
+            sparkline_data_session_key = 'sparkline_data.{0}'.format(int_to_hex_str(hash))
+            sparkline_data = request.session.get(sparkline_data_session_key, [])
+            if sparkline_data:
+                if sparkline_data[-1] != count:
+                    # add new data only if it is different from the last data added
+                    sparkline_data.append(count)
+            else:
+                sparkline_data.append(count)
+            COUNT_LIMIT = 20
+            if len(sparkline_data) > COUNT_LIMIT:
+                # limit number of items in sparkline data
+                sparkline_data = sparkline_data[-COUNT_LIMIT:len(sparkline_data)]
             statements.append([
                 captured_statement,
                 count,
-                int_to_hex_str(captured_statement.canonicalized_statement_hash)])
+                int_to_hex_str(hash),
+                ','.join([str(i) for i in sparkline_data])
+            ])
+            request.session[sparkline_data_session_key] = sparkline_data
 
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
@@ -77,5 +92,15 @@ def home(request, template='home.html'):
     try:
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
+    except Exception, e:
+        LOGGER.exception('{0}'.format(e))
+
+def sparkline(request, data):
+    try:
+        data = [int(x) for x in data.split(',')]
+        image = spark.sparkline_smooth(data)
+        response = HttpResponse(mimetype="image/png")
+        image.save(response, 'PNG')
+        return response
     except Exception, e:
         LOGGER.exception('{0}'.format(e))
