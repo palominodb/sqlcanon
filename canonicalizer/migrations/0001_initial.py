@@ -20,10 +20,12 @@ class Migration(SchemaMigration):
         # Adding model 'CapturedStatement'
         db.create_table('canonicalizer_capturedstatement', (
             ('id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('dt', self.gf('django.db.models.fields.DateTimeField')()),
+            ('dt', self.gf('django.db.models.fields.DateTimeField')(db_index=True)),
             ('statement', self.gf('django.db.models.fields.TextField')()),
             ('canonicalized_statement', self.gf('django.db.models.fields.TextField')()),
             ('canonicalized_statement_hash', self.gf('django.db.models.fields.IntegerField')()),
+            ('sequence_id', self.gf('django.db.models.fields.IntegerField')(unique=True)),
+            ('last_updated', self.gf('django.db.models.fields.DateTimeField')(auto_now=True, auto_now_add=True, db_index=True, blank=True)),
         ))
         db.send_create_signal('canonicalizer', ['CapturedStatement'])
 
@@ -48,8 +50,10 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'CapturedStatement'},
             'canonicalized_statement': ('django.db.models.fields.TextField', [], {}),
             'canonicalized_statement_hash': ('django.db.models.fields.IntegerField', [], {}),
-            'dt': ('django.db.models.fields.DateTimeField', [], {}),
+            'dt': ('django.db.models.fields.DateTimeField', [], {'db_index': 'True'}),
             'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'last_updated': ('django.db.models.fields.DateTimeField', [], {'auto_now': 'True', 'auto_now_add': 'True', 'db_index': 'True', 'blank': 'True'}),
+            'sequence_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True'}),
             'statement': ('django.db.models.fields.TextField', [], {})
         }
     }

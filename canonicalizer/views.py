@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import logging
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse
 from django.shortcuts import render_to_response
 from django.template import RequestContext
@@ -13,6 +14,8 @@ from canonicalizer.models import CapturedStatement
 from canonicalizer.lib import spark
 
 LOGGER = logging.getLogger(__name__)
+
+CAPTURED_STATEMENT_ROW_LIMIT = 5
 
 @csrf_exempt
 def process_captured_statement(request):
@@ -30,12 +33,29 @@ def process_captured_statement(request):
                     statement_canonicalized = STATEMENT_UNKNOWN
                 hash = mmh3.hash(statement_canonicalized)
 
-                CapturedStatement.objects.create(
-                    dt=dt,
-                    statement=statement_orig,
-                    canonicalized_statement=statement_canonicalized,
-                    canonicalized_statement_hash=hash,
-                )
+                qs = CapturedStatement.objects.order_by('-last_updated')[:1]
+                captured_statement = None
+                if qs:
+                    captured_statement = qs[0]
+                if captured_statement:
+                    sequence_id = (captured_statement.sequence_id + 1) % CAPTURED_STATEMENT_ROW_LIMIT
+                else:
+                    sequence_id = 1
+                try:
+                    captured_statement = CapturedStatement.objects.get(sequence_id=sequence_id)
+                    captured_statement.dt = dt
+                    captured_statement.statement = statement_orig
+                    captured_statement.canonicalized_statement = statement_canonicalized
+                    captured_statement.canonicalized_statement_hash = hash
+                    captured_statement.save()
+                except ObjectDoesNotExist:
+                    CapturedStatement.objects.create(
+                        dt=dt,
+                        statement=statement_orig,
+                        canonicalized_statement=statement_canonicalized,
+                        canonicalized_statement_hash=hash,
+                        sequence_id=sequence_id,
+                    )
 
 
         return HttpResponse('')

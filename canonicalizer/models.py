@@ -11,10 +11,12 @@ class CanonicalizedStatement(models.Model):
         )
 
 class CapturedStatement(models.Model):
-    dt = models.DateTimeField()
+    dt = models.DateTimeField(db_index=True)
     statement = models.TextField()
     canonicalized_statement = models.TextField()
     canonicalized_statement_hash = models.IntegerField()
+    sequence_id = models.IntegerField(unique=True)
+    last_updated = models.DateTimeField(db_index=True, auto_now_add=True, auto_now=True)
 
     def __unicode__(self):
         return u'<CapturedStatement id={0}, dt={1}, statement={2}>'.format(
