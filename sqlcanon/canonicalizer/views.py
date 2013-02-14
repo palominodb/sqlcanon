@@ -11,7 +11,7 @@ import mmh3
 from canonicalizer.lib.canonicalizers import STATEMENT_UNKNOWN, \
     canonicalize_statement, db_increment_canonicalized_statement_count
 from canonicalizer.lib.utils import int_to_hex_str
-from canonicalizer.models import CapturedStatement
+from canonicalizer.models import CapturedStatement, CanonicalizedStatement
 from canonicalizer.lib import spark
 
 LOGGER = logging.getLogger(__name__)
@@ -121,5 +121,14 @@ def sparkline(request, data):
         response = HttpResponse(mimetype="image/png")
         image.save(response, 'PNG')
         return response
+    except Exception, e:
+        LOGGER.exception('{0}'.format(e))
+
+def top_queries(request, n, template='canonicalizer/top_queries.html'):
+    try:
+        n = int(n)
+        statements = CanonicalizedStatement.objects.order_by('-instances')[:n]
+        return render_to_response(template, locals(),
+            context_instance=RequestContext(request))
     except Exception, e:
         LOGGER.exception('{0}'.format(e))
