@@ -12,6 +12,8 @@ import argparse
 
 PP = pprint.PrettyPrinter(indent=4)
 
+PROCESS_CAPTURED_STATEMENT_URL = 'http://localhost:8000/canonicalizer/process_captured_statement/'
+
 def process_packet(pktlen, data, timestamp):
     if not data:
         return
@@ -25,11 +27,10 @@ def process_packet(pktlen, data, timestamp):
     payload = payload[5:]
 
     params = dict(statement=payload)
-    target = 'http://localhost:8000/canonicalizer/process_captured_statement/'
     params = urllib.urlencode(params)
     print params
     try:
-        handler = urllib2.urlopen(target, params)
+        handler = urllib2.urlopen(PROCESS_CAPTURED_STATEMENT_URL, params)
         print 'handler.code:', handler.code
     except Exception, e:
         print 'Exception: {0}'.format(e)
@@ -39,7 +40,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('interface', help='interface to sniff from')
     parser.add_argument('--filter', default='dst port 3306', help='pcap-filter')
+    parser.add_argument(
+        '--capture_url',
+        help='URL of captured statement processor (default: http://localhost:8000/canonicalizer/process_captured_statement/)',
+    )
     args = parser.parse_args()
+    if args.capture_url:
+        PROCESS_CAPTURED_STATEMENT_URL = args.capture_url
+    print 'Sending captured statements to: {0}'.format(PROCESS_CAPTURED_STATEMENT_URL)
 
     #if len(sys.argv) < 3:
     #    print 'usage: {0} <interface> <expr>'.format(sys.argv[0])
