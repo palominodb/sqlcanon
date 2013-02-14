@@ -1,0 +1,2 @@
+http://sourceforge.net/projects/pylibpcap/files/pylibpcap/0.6.4/pylibpcap-0.6.4.tar.gz/download
+construct==2.06
