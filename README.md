@@ -9,6 +9,11 @@ Canonicalize SQL statements
 Notes
 =====
 
+** Locations **
+
+sqlcanon - server/Django web application
+sqlcanonclient - sqlcanon client setup and source files
+
 ** Installation of requirements **
 
 $ pip install -r requirements.txt
@@ -20,15 +25,15 @@ It is recommended to create a virtual environment and install the requirements t
 $ python manage.py syncdb
 $ python manage.py migrate
 
-** To run built-in http server to accept statements captured by sqlcanon_client: **
+** To run built-in http server to accept statements captured by sqlcanonclient: **
 
 $ python manage.py runserver
 
 ** To run sniffer: **
 
-$ sudo python sqlcanon_client <interface> <filter>
+$ sudo python sqlcanonclient.py <interface> <filter>
 
-Example: $ sudo python sqlcanon_client lo --filter="dst port 3306"
+Example: $ sudo python sqlcanonclient.py lo --filter="dst port 3306"
 
 Try connecting to mysql and try some statements: $ mysql -h 127.0.0.1 -u <user>
 
