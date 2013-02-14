@@ -152,6 +152,8 @@ SITE_LOGGERS = {
     },
 }
 
+CAPTURED_STATEMENT_ROW_LIMIT = 100
+
 try:
     from local_settings import *
 except ImportError:

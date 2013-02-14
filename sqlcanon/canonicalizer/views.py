@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import logging
+from django.conf import settings 
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse
 from django.shortcuts import render_to_response
@@ -14,8 +15,6 @@ from canonicalizer.models import CapturedStatement
 from canonicalizer.lib import spark
 
 LOGGER = logging.getLogger(__name__)
-
-CAPTURED_STATEMENT_ROW_LIMIT = 5
 
 @csrf_exempt
 def process_captured_statement(request):
@@ -38,7 +37,7 @@ def process_captured_statement(request):
                 if qs:
                     captured_statement = qs[0]
                 if captured_statement:
-                    sequence_id = (captured_statement.sequence_id + 1) % CAPTURED_STATEMENT_ROW_LIMIT
+                    sequence_id = (captured_statement.sequence_id + 1) % settings.CAPTURED_STATEMENT_ROW_LIMIT
                 else:
                     sequence_id = 1
                 try:
