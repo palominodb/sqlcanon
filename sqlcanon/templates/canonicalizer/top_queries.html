@@ -8,12 +8,14 @@
         <tr>
             <th>Instances</th>
             <th>Hash</th>
+            <th>Hostname</th>
             <th>Statement</th>
         </tr>
         {% for statement in statements %}
             <tr>
                 <td>{{ statement.instances }}</td>
-                <td>{{ statement.hash_as_hex_str }}</td>
+                <td>{{ statement.statement_hostname_hash_as_hex_str }}</td>
+                <td>{{ statement.hostname }}</td>
                 <td>{{ statement.statement }}</td>
             </tr>
         {% endfor %}
