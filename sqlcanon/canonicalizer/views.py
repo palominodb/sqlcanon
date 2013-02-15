@@ -18,6 +18,7 @@ LOGGER = logging.getLogger(__name__)
 
 @csrf_exempt
 def process_captured_statement(request):
+    explain = []
     try:
         if request.method == 'POST':
             hostname = unicode(request.POST['hostname'])
@@ -31,10 +32,28 @@ def process_captured_statement(request):
 
                 if not statement_canonicalized:
                     statement_canonicalized = STATEMENT_UNKNOWN
+
+                is_select_statement = statement_canonicalized.strip().startswith('SELECT ')
+                #LOGGER.debug('is_select_statement: {0}'.format(is_select_statement))
                 hash = mmh3.hash(statement_canonicalized)
                 statement_hostname_hash = mmh3.hash('{0}{1}'.format(
                     statement_canonicalized, hostname
                 ))
+
+                if is_select_statement:
+                    #LOGGER.debug('statement_hostname_hash: {0}'.format(statement_hostname_hash))
+                    count = CanonicalizedStatement.objects.filter(
+                        statement_hostname_hash=statement_hostname_hash).count()
+                    #LOGGER.debug('count: {0}'.format(count))
+                    #is_new = not (CapturedStatement.objects.filter(
+                    #    statement_hostname_hash=statement_hostname_hash).count())
+                    is_new = not count
+                    #LOGGER.debug('is_new: {0}'.format(is_new))
+                    if is_new:
+                        explain.append(statement_orig)
+                        LOGGER.debug('Added statement for EXPLAIN execution: {0}'.format(
+                            statement_orig
+                        ))
 
                 db_increment_canonicalized_statement_count(
                     canonicalized_statement=statement_canonicalized,
@@ -71,10 +90,11 @@ def process_captured_statement(request):
                         sequence_id=sequence_id,
                     )
 
-        ret = simplejson.dumps(dict(explain=False))
-        return HttpResponse(ret, mimetype='application/json')
+        ret = simplejson.dumps(dict(explain=explain))
     except Exception, e:
         LOGGER.exception('{0}'.format(e))
+        ret = simplejson.dumps(dict(error='{0}'.format(e)))
+    return HttpResponse(ret, mimetype='application/json')
 
 def last_statements(request, window_length,
                     template='canonicalizer/last_statements.html'):

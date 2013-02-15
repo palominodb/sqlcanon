@@ -2,6 +2,8 @@
 
 import argparse
 from datetime import datetime, timedelta
+import getpass
+import json
 import pprint
 import os
 import re
@@ -16,6 +18,7 @@ import urllib2
 from construct.protocols.ipstack import ip_stack
 import pcap
 import mmh3
+import MySQLdb
 import sqlite3
 import sqlparse
 from sqlparse.tokens import Token
@@ -36,6 +39,11 @@ COLLAPSE_TARGET_PARTS = True
 DB = './sqlcanon.db'
 
 HOSTNAME = socket.gethostname()
+
+MYSQL_HOST = '127.0.0.1'
+MYSQL_DB = ''
+MYSQL_USER = ''
+MYSQL_PASSWORD = ''
 
 class url_request(object):
     """
@@ -911,7 +919,37 @@ def init_db():
             """
         )
 
+def handle_explain(response_content):
+    try:
+        response = json.loads(response_content)
+        statements = response.get('explain', [])
+        if statements:
+            conn = MySQLdb.connect(
+                host=MYSQL_HOST,
+                user=MYSQL_USER,
+                passwd=MYSQL_PASSWORD,
+                db=MYSQL_DB
+            )
+            with conn:
+                cur = conn.cursor()
+                for statement in statements:
+                    try:
+                        print '#' * 80
+                        print 'Executing EXPLAIN {0}...'.format(statement)
+                        sql = 'EXPLAIN {0}'.format(statement)
+                        cur.execute(sql)
+                        description = cur.description
+                        print 'description: {0}'.format(description)
+                        rows = cur.fetchall()
+                        for row in rows:
+                            print 'row: {0}'.format(row)
+                        print '#' * 80
+                        print
+                    except Exception, e:
+                        print 'An error has occurred: {0}'.format(e)
 
+    except Exception, e:
+        print 'An error has occurred while handling explain: {0}'.format(e)
 
 def process_packet(pktlen, data, timestamp):
     if not data:
@@ -921,6 +959,7 @@ def process_packet(pktlen, data, timestamp):
     stack = ip_stack.parse(data)
     payload = stack.next.next.next
     print payload
+    print
 
     # MySQL queries start on the 6th char (?)
     payload = payload[5:]
@@ -930,13 +969,13 @@ def process_packet(pktlen, data, timestamp):
         hostname=HOSTNAME
     )
     params = urllib.urlencode(params)
-    print params
     try:
         #handler = urllib2.urlopen(PROCESS_CAPTURED_STATEMENT_URL, params)
         #print 'handler.code:', handler.code
         response = url_request(PROCESS_CAPTURED_STATEMENT_URL, data=params)
-        print 'response.content = {0}'.format(response.content)
-        print 'response.code = {0}'.format(response.code)
+        #print 'response.content = {0}'.format(response.content)
+        #print 'response.code = {0}'.format(response.code)
+        handle_explain(response.content)
     except Exception, e:
         print 'Exception: {0}'.format(e)
 
@@ -1000,13 +1039,31 @@ if __name__ == '__main__':
 
     parser.add_argument('--listen-window-length', default=5, type=int, help='Length of period of query list filter in number of minutes. (default: 5)')
 
-
+    # this options will be used to execute EXPLAIN statement
+    parser.add_argument('--mysql-host', help='mysql host')
+    parser.add_argument('--mysql-db', help='mysql db')
+    parser.add_argument('--mysql-user', help='mysql user')
+    parser.add_argument('--mysql-password', help='mysql password')
 
     args = parser.parse_args()
+    #print type(args)
+    #print args
+    #print dir(args)
 
     if args.db:
         DB = args.db
     init_db()
+
+    MYSQL_HOST = args.mysql_host
+    MYSQL_DB = args.mysql_db
+    MYSQL_USER = args.mysql_user
+    MYSQL_PASSWORD = args.mysql_password
+
+    if MYSQL_PASSWORD is not None:
+        # ask for password if password is not None but is an empty string
+        if not MYSQL_PASSWORD:
+            MYSQL_PASSWORD = getpass.getpass()
+
 
     if args.capture_url:
         PROCESS_CAPTURED_STATEMENT_URL = args.capture_url

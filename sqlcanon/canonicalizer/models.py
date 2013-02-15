@@ -8,6 +8,9 @@ class CanonicalizedStatement(models.Model):
     statement_hostname_hash = models.IntegerField(default=0, db_index=True)
     instances = models.IntegerField(default=0, db_index=True)
 
+    class Meta:
+        unique_together = (('hostname', 'statement'),)
+
     def __unicode__(self):
         return u'<CanonicalizedStatement id={0}, statement={1}, hostname={2}, hash={3}, counts={4}>'.format(
             self.id, self.statement, self.hostname, self.statement_hostname_hash, self.instances
