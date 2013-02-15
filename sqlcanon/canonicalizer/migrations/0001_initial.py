@@ -11,9 +11,11 @@ class Migration(SchemaMigration):
         # Adding model 'CanonicalizedStatement'
         db.create_table('canonicalizer_canonicalizedstatement', (
             ('id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('statement', self.gf('django.db.models.fields.TextField')(default='', unique=True)),
-            ('hash', self.gf('django.db.models.fields.IntegerField')(default=0, unique=True)),
-            ('instances', self.gf('django.db.models.fields.IntegerField')(default=0)),
+            ('statement', self.gf('django.db.models.fields.TextField')(default='')),
+            ('hostname', self.gf('django.db.models.fields.CharField')(default='', max_length=1024)),
+            ('hash', self.gf('django.db.models.fields.IntegerField')(default=0, db_index=True)),
+            ('statement_hostname_hash', self.gf('django.db.models.fields.IntegerField')(default=0, db_index=True)),
+            ('instances', self.gf('django.db.models.fields.IntegerField')(default=0, db_index=True)),
         ))
         db.send_create_signal('canonicalizer', ['CanonicalizedStatement'])
 
@@ -21,9 +23,11 @@ class Migration(SchemaMigration):
         db.create_table('canonicalizer_capturedstatement', (
             ('id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('dt', self.gf('django.db.models.fields.DateTimeField')(db_index=True)),
-            ('statement', self.gf('django.db.models.fields.TextField')()),
-            ('canonicalized_statement', self.gf('django.db.models.fields.TextField')()),
-            ('canonicalized_statement_hash', self.gf('django.db.models.fields.IntegerField')()),
+            ('statement', self.gf('django.db.models.fields.TextField')(default='')),
+            ('hostname', self.gf('django.db.models.fields.CharField')(default='', max_length=1024)),
+            ('canonicalized_statement', self.gf('django.db.models.fields.TextField')(default='')),
+            ('canonicalized_statement_hash', self.gf('django.db.models.fields.IntegerField')(default=0, db_index=True)),
+            ('statement_hostname_hash', self.gf('django.db.models.fields.IntegerField')(default=0, db_index=True)),
             ('sequence_id', self.gf('django.db.models.fields.IntegerField')(unique=True)),
             ('last_updated', self.gf('django.db.models.fields.DateTimeField')(auto_now=True, auto_now_add=True, db_index=True, blank=True)),
         ))
@@ -41,20 +45,24 @@ class Migration(SchemaMigration):
     models = {
         'canonicalizer.canonicalizedstatement': {
             'Meta': {'object_name': 'CanonicalizedStatement'},
-            'hash': ('django.db.models.fields.IntegerField', [], {'default': '0', 'unique': 'True'}),
+            'hash': ('django.db.models.fields.IntegerField', [], {'default': '0', 'db_index': 'True'}),
+            'hostname': ('django.db.models.fields.CharField', [], {'default': "''", 'max_length': '1024'}),
             'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'instances': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
-            'statement': ('django.db.models.fields.TextField', [], {'default': "''", 'unique': 'True'})
+            'instances': ('django.db.models.fields.IntegerField', [], {'default': '0', 'db_index': 'True'}),
+            'statement': ('django.db.models.fields.TextField', [], {'default': "''"}),
+            'statement_hostname_hash': ('django.db.models.fields.IntegerField', [], {'default': '0', 'db_index': 'True'})
         },
         'canonicalizer.capturedstatement': {
             'Meta': {'object_name': 'CapturedStatement'},
-            'canonicalized_statement': ('django.db.models.fields.TextField', [], {}),
-            'canonicalized_statement_hash': ('django.db.models.fields.IntegerField', [], {}),
+            'canonicalized_statement': ('django.db.models.fields.TextField', [], {'default': "''"}),
+            'canonicalized_statement_hash': ('django.db.models.fields.IntegerField', [], {'default': '0', 'db_index': 'True'}),
             'dt': ('django.db.models.fields.DateTimeField', [], {'db_index': 'True'}),
+            'hostname': ('django.db.models.fields.CharField', [], {'default': "''", 'max_length': '1024'}),
             'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'last_updated': ('django.db.models.fields.DateTimeField', [], {'auto_now': 'True', 'auto_now_add': 'True', 'db_index': 'True', 'blank': 'True'}),
             'sequence_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True'}),
-            'statement': ('django.db.models.fields.TextField', [], {})
+            'statement': ('django.db.models.fields.TextField', [], {'default': "''"}),
+            'statement_hostname_hash': ('django.db.models.fields.IntegerField', [], {'default': '0', 'db_index': 'True'})
         }
     }
 

@@ -5,7 +5,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse
 from django.shortcuts import render_to_response
 from django.template import RequestContext
-from django.utils import timezone
+from django.utils import timezone, simplejson
 from django.views.decorators.csrf import csrf_exempt
 import mmh3
 from canonicalizer.lib.canonicalizers import STATEMENT_UNKNOWN, \
@@ -20,17 +20,27 @@ LOGGER = logging.getLogger(__name__)
 def process_captured_statement(request):
     try:
         if request.method == 'POST':
+            hostname = unicode(request.POST['hostname'])
             statement = unicode(request.POST['statement'])
-            LOGGER.debug(u'Statement: {0}'.format(statement))
+            LOGGER.debug(u'Hostname: {0}, Statement: {1}'.format(hostname, statement))
+
             dt = timezone.now()
             canonicalize_statement_results = canonicalize_statement(statement)
             for statement_orig, statement_normalized, statement_canonicalized, values \
-                in canonicalize_statement_results:
+                    in canonicalize_statement_results:
 
-                db_increment_canonicalized_statement_count(statement_canonicalized)
                 if not statement_canonicalized:
                     statement_canonicalized = STATEMENT_UNKNOWN
                 hash = mmh3.hash(statement_canonicalized)
+                statement_hostname_hash = mmh3.hash('{0}{1}'.format(
+                    statement_canonicalized, hostname
+                ))
+
+                db_increment_canonicalized_statement_count(
+                    canonicalized_statement=statement_canonicalized,
+                    canonicalized_statement_hash=hash,
+                    hostname=hostname,
+                    statement_hostname_hash=statement_hostname_hash)
 
                 qs = CapturedStatement.objects.order_by('-last_updated')[:1]
                 captured_statement = None
@@ -41,27 +51,33 @@ def process_captured_statement(request):
                 else:
                     sequence_id = 1
                 try:
-                    captured_statement = CapturedStatement.objects.get(sequence_id=sequence_id)
+                    captured_statement = CapturedStatement.objects.get(
+                        sequence_id=sequence_id)
                     captured_statement.dt = dt
                     captured_statement.statement = statement_orig
+                    captured_statement.hostname = hostname
                     captured_statement.canonicalized_statement = statement_canonicalized
                     captured_statement.canonicalized_statement_hash = hash
+                    captured_statement.statement_hostname_hash = statement_hostname_hash
                     captured_statement.save()
                 except ObjectDoesNotExist:
                     CapturedStatement.objects.create(
                         dt=dt,
                         statement=statement_orig,
+                        hostname=hostname,
                         canonicalized_statement=statement_canonicalized,
                         canonicalized_statement_hash=hash,
+                        statement_hostname_hash=statement_hostname_hash,
                         sequence_id=sequence_id,
                     )
 
-
-        return HttpResponse('')
+        ret = simplejson.dumps(dict(explain=False))
+        return HttpResponse(ret, mimetype='application/json')
     except Exception, e:
         LOGGER.exception('{0}'.format(e))
 
-def last_statements(request, window_length, template='canonicalizer/last_statements.html'):
+def last_statements(request, window_length,
+                    template='canonicalizer/last_statements.html'):
     try:
         window_length = int(window_length)
         dt = timezone.now()
@@ -72,7 +88,7 @@ def last_statements(request, window_length, template='canonicalizer/last_stateme
         # calculate counts
         counts = {}
         for captured_statement in captured_statements:
-            hash = captured_statement.canonicalized_statement_hash
+            hash = captured_statement.statement_hostname_hash
             if counts.has_key(hash):
                 counts[hash] += 1
             else:
@@ -82,8 +98,10 @@ def last_statements(request, window_length, template='canonicalizer/last_stateme
         for captured_statement in captured_statements:
             hash = captured_statement.canonicalized_statement_hash
             count = counts.get(hash, 1)
-            sparkline_data_session_key = 'sparkline_data.{0}'.format(int_to_hex_str(hash))
-            sparkline_data = request.session.get(sparkline_data_session_key, [])
+            sparkline_data_session_key = 'sparkline_data.{0}'.format(
+                int_to_hex_str(hash))
+            sparkline_data = request.session.get(
+                sparkline_data_session_key, [])
             if sparkline_data:
                 if sparkline_data[-1] != count:
                     # add new data only if it is different from the last data added
@@ -93,7 +111,8 @@ def last_statements(request, window_length, template='canonicalizer/last_stateme
             COUNT_LIMIT = 20
             if len(sparkline_data) > COUNT_LIMIT:
                 # limit number of items in sparkline data
-                sparkline_data = sparkline_data[-COUNT_LIMIT:len(sparkline_data)]
+                sparkline_data = sparkline_data[-COUNT_LIMIT:len(
+                    sparkline_data)]
             statements.append([
                 captured_statement,
                 count,

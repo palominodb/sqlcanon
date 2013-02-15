@@ -665,9 +665,12 @@ def query_log_listen(log_file, listen_frequency, listen_window_length,
     finally:
         file.close()
 
-def db_increment_canonicalized_statement_count(canonicalized_statement,
-                                               canonicalized_statement_hash=None,
-                                               count=1):
+def db_increment_canonicalized_statement_count(
+        canonicalized_statement,
+        canonicalized_statement_hash=None,
+        hostname='',
+        statement_hostname_hash=None,
+        count=1):
     """
     Increments count on database.
     """
@@ -677,8 +680,18 @@ def db_increment_canonicalized_statement_count(canonicalized_statement,
         # recompute canonicalized_statement_hash
         canonicalized_statement_hash = mmh3.hash(canonicalized_statement)
 
+        # recompute statement_hostname_hash
+        statement_hostname_hash = mmh3.hash('{0}{1}'.format(
+            canonicalized_statement, hostname
+        ))
+
     if not canonicalized_statement_hash:
         canonicalized_statement_hash = mmh3.hash(canonicalized_statement)
+
+    if not statement_hostname_hash:
+        statement_hostname_hash = mmh3.hash('{0}{1}'.format(
+            canonicalized_statement, hostname
+        ))
 
     #conn = sqlite3.connect(SETTINGS['DB'])
     #with conn:
@@ -703,13 +716,15 @@ def db_increment_canonicalized_statement_count(canonicalized_statement,
 
     try:
         info = CanonicalizedStatement.objects.get(
-            hash=canonicalized_statement_hash)
+            statement_hostname_hash=statement_hostname_hash)
         info.instances += count
         info.save()
     except ObjectDoesNotExist:
         CanonicalizedStatement.objects.create(
             statement=canonicalized_statement,
+            hostname=hostname,
             hash=canonicalized_statement_hash,
+            statement_hostname_hash=statement_hostname_hash,
             instances=count)
 
 def print_db_counts():

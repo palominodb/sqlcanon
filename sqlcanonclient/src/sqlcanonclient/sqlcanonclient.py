@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import pprint
 import os
 import re
+import socket
 import string
 import sys
 from sys import stdin
@@ -33,6 +34,29 @@ QUERY_LOG_PATTERN_FULL_QUERY = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<q
 COLLAPSE_TARGET_PARTS = True
 
 DB = './sqlcanon.db'
+
+HOSTNAME = socket.gethostname()
+
+class url_request(object):
+    """
+    wrapper for urllib2
+    """
+    def __init__(self, url, data=None, headers={}):
+        request = urllib2.Request(url, data=data, headers=headers)
+        try:
+            self._response = urllib2.urlopen(request).read()
+            self._code = 200
+        except urllib2.URLError, e:
+            self._response = e.read()
+            self._code = e.code
+
+    @property
+    def content(self):
+        return self._response
+
+    @property
+    def code(self):
+        return self._code
 
 def int_to_hex_str(n):
     """
@@ -901,12 +925,18 @@ def process_packet(pktlen, data, timestamp):
     # MySQL queries start on the 6th char (?)
     payload = payload[5:]
 
-    params = dict(statement=payload)
+    params = dict(
+        statement=payload,
+        hostname=HOSTNAME
+    )
     params = urllib.urlencode(params)
     print params
     try:
-        handler = urllib2.urlopen(PROCESS_CAPTURED_STATEMENT_URL, params)
-        print 'handler.code:', handler.code
+        #handler = urllib2.urlopen(PROCESS_CAPTURED_STATEMENT_URL, params)
+        #print 'handler.code:', handler.code
+        response = url_request(PROCESS_CAPTURED_STATEMENT_URL, data=params)
+        print 'response.content = {0}'.format(response.content)
+        print 'response.code = {0}'.format(response.code)
     except Exception, e:
         print 'Exception: {0}'.format(e)
 
