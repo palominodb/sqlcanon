@@ -35,6 +35,9 @@ $ sudo python sqlcanonclient.py --sniff --interface <interface> --filter <filter
 
 Example: $ sudo python sqlcanonclient.py --sniff --interface lo --filter="dst port 3306"
 
+Note: To execute EXPLAIN statements, supply values for:
+      --mysql-host, --mysql-db, --mysql-user, --mysql-password
+
 Try connecting to mysql and try some statements: $ mysql -h 127.0.0.1 -u <user>
 
 ** Web app pages **
