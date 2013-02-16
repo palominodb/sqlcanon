@@ -36,7 +36,7 @@ QUERY_LOG_PATTERN_FULL_QUERY = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<q
 # collapse target parts (for now target parts are in and values)
 COLLAPSE_TARGET_PARTS = True
 
-DB = './sqlcanon.db'
+DB = './sqlcanonclient.db'
 
 HOSTNAME = socket.gethostname()
 
@@ -1018,11 +1018,11 @@ def run_packet_sniffer(args):
         print 'shutting down'
         print '%d packets received, %d packets dropped, %d packets dropped by interface' % p.stats()
 
-if __name__ == '__main__':
 
+def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--db', help='database name (default: ./sqlcanon.db)')
+    parser.add_argument('--db', help='database name (default: ./sqlcanonclient.db)')
     parser.add_argument('--print-db-counts', action='store_true', help='Prints counts stored in DB at the end of execution.')
     parser.add_argument('--log-file', help='Mysql query log file to process.')
 
@@ -1096,3 +1096,7 @@ if __name__ == '__main__':
 
     except Exception, e:
         print 'An error has occurred: {0}'.format(e)
+
+
+if __name__ == '__main__':
+    main()
