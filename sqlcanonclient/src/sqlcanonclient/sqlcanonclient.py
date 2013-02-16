@@ -923,6 +923,7 @@ def handle_explain(response_content):
     try:
         response = json.loads(response_content)
         statements = response.get('explain', [])
+        #print (MYSQL_HOST, MYSQL_DB, MYSQL_USER, MYSQL_PASSWORD)
         if statements:
             conn = MySQLdb.connect(
                 host=MYSQL_HOST,
@@ -1050,10 +1051,12 @@ def main():
     #print args
     #print dir(args)
 
+    global DB
     if args.db:
         DB = args.db
     init_db()
 
+    global MYSQL_HOST, MYSQL_DB, MYSQL_USER, MYSQL_PASSWORD
     MYSQL_HOST = args.mysql_host
     MYSQL_DB = args.mysql_db
     MYSQL_USER = args.mysql_user
@@ -1064,7 +1067,7 @@ def main():
         if not MYSQL_PASSWORD:
             MYSQL_PASSWORD = getpass.getpass()
 
-
+    global PROCESS_CAPTURED_STATEMENT_URL
     if args.capture_url:
         PROCESS_CAPTURED_STATEMENT_URL = args.capture_url
 
