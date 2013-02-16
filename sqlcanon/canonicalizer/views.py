@@ -116,7 +116,7 @@ def last_statements(request, window_length,
 
         statements = []
         for captured_statement in captured_statements:
-            hash = captured_statement.canonicalized_statement_hash
+            hash = captured_statement.statement_hostname_hash
             count = counts.get(hash, 1)
             sparkline_data_session_key = 'sparkline_data.{0}'.format(
                 int_to_hex_str(hash))
