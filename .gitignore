@@ -16,6 +16,7 @@ sdist
 develop-eggs
 .installed.cfg
 lib
+!sqlcanon/canonicalizer/lib
 lib64
 
 # Installer logs
