@@ -983,8 +983,7 @@ def process_packet(pktlen, data, timestamp):
 
 def run_packet_sniffer(args):
     if not args.interface:
-        print '--interface was not specified.'
-        sys.exit()
+        print 'Monitoring interface lo0'
 
     print 'Sending captured statements to: {0}'.format(PROCESS_CAPTURED_STATEMENT_URL)
 
@@ -1032,7 +1031,7 @@ def main():
     action.add_argument('--sniff', action='store_true', default=False, help='launch packet sniffer')
     action.add_argument('--listen', action='store_true', help='Opens up log file and waits for newly written data.')
 
-    parser.add_argument('--interface', help='interface to sniff from')
+    parser.add_argument('--interface', help='interface to sniff from', default='lo0')
     parser.add_argument('--filter', default='dst port 3306', help='pcap-filter')
     parser.add_argument(
         '--capture-url',
