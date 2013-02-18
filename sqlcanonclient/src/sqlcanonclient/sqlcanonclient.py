@@ -11,7 +11,7 @@ import socket
 import string
 import sys
 from sys import stdin
-import tempdile
+import tempfile
 import time
 import urllib
 import urllib2
@@ -1022,9 +1022,9 @@ def run_packet_sniffer(args):
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--db', help='database name (default: ./sqlcanonclient.db)')
+    parser.add_argument('--db', help='database name', default = DB)
     parser.add_argument('--print-db-counts', action='store_true', help='Prints counts stored in DB at the end of execution.')
     parser.add_argument('--log-file', help='Mysql query log file to process.')
 
@@ -1036,8 +1036,7 @@ def main():
     parser.add_argument('--filter', default='dst port 3306', help='pcap-filter')
     parser.add_argument(
         '--capture-url',
-        help='URL of captured statement processor (default: http://localhost:8000/canonicalizer/process_captured_statement/)',
-    )
+        help='URL of captured statement processor', default='http://localhost:8000/canonicalizer/process_captured_statement/'),
 
     parser.add_argument('--listen-window-length', default=5, type=int, help='Length of period of query list filter in number of minutes. (default: 5)')
 
