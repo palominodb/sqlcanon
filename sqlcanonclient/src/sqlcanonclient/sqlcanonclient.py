@@ -1033,7 +1033,7 @@ def main():
     action.add_argument('--listen', action='store_true', help='Opens up log file and waits for newly written data.')
 
     parser.add_argument('--interface', help='interface to sniff from')
-    parser.add_argument('--filter', default='dst port 3306', help='pcap-filter')
+    parser.add_argument('--filter', default='"dst port 3306"', help='pcap-filter')
     parser.add_argument(
         '--capture-url',
         help='URL of captured statement processor', default='http://localhost:8000/canonicalizer/process_captured_statement/'),
