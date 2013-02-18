@@ -11,6 +11,7 @@ import socket
 import string
 import sys
 from sys import stdin
+import tempdile
 import time
 import urllib
 import urllib2
@@ -36,7 +37,7 @@ QUERY_LOG_PATTERN_FULL_QUERY = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<q
 # collapse target parts (for now target parts are in and values)
 COLLAPSE_TARGET_PARTS = True
 
-DB = './sqlcanonclient.db'
+DB = '%s/sqlcanonclient.db' % tempfile.gettempdir()
 
 HOSTNAME = socket.gethostname()
 
