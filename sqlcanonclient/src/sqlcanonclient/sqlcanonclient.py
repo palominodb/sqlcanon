@@ -37,14 +37,8 @@ QUERY_LOG_PATTERN_FULL_QUERY = r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<q
 # collapse target parts (for now target parts are in and values)
 COLLAPSE_TARGET_PARTS = True
 
-DB = '%s/sqlcanonclient.db' % tempfile.gettempdir()
-
 HOSTNAME = socket.gethostname()
 
-MYSQL_HOST = '127.0.0.1'
-MYSQL_DB = ''
-MYSQL_USER = ''
-MYSQL_PASSWORD = ''
 
 class url_request(object):
     """
@@ -1021,6 +1015,13 @@ def run_packet_sniffer(args):
 
 
 def main():
+    global DB
+    DB = '%s/sqlcanonclient.db' % tempfile.gettempdir()
+
+    global MYSQL_HOST, MYSQL_DB, MYSQL_USER, MYSQL_PASSWORD
+    MYSQL_HOST = '127.0.0.1'
+    MYSQL_DB, MYSQL_USER, MYSQL_PASSWORD = None, None, None
+
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('--db', help='database name', default = DB)
@@ -1050,14 +1051,13 @@ def main():
     #print args
     #print dir(args)
 
-    global DB
+
     if args.db:
         DB = args.db
     init_db()
 
-    global MYSQL_HOST, MYSQL_DB, MYSQL_USER, MYSQL_PASSWORD
     MYSQL_HOST = args.mysql_host
-    MYSQL_DB = args.mysql_db
+    MYSQL_DB = args.mysql_db 
     MYSQL_USER = args.mysql_user
     MYSQL_PASSWORD = args.mysql_password
 
