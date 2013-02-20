@@ -3,6 +3,7 @@
 import argparse
 from datetime import datetime, timedelta
 import getpass
+import itertools
 import json
 import pprint
 import os
@@ -1014,6 +1015,146 @@ def run_packet_sniffer(args):
         print '%d packets received, %d packets dropped, %d packets dropped by interface' % p.stats()
 
 
+class SlowQueryLogItem(object):
+    """Encapsulates information about a statement log."""
+
+    def __init__(self):
+        super(SlowQueryLogItem, self).__init__()
+        self.line_time_info = None
+        self.line_user_info = None
+        self.line_variables = None
+        self.line_statement = None
+
+        self.dt = None
+        self.query_time = None
+        self.lock_time = None
+        self.rows_sent = None
+        self.rows_examined = None
+        self.statement = None
+
+    def parse_time_info(self, line):
+        """Parses time info."""
+        __, __, date_str, time_str = line.split()
+        self.dt = datetime.strptime(' '.join([date_str, time_str]),
+            '%y%m%d %H:%M:%S')
+
+    def parse_user_info(self, line):
+        """Parses user info."""
+
+        # Just store it for now.
+        self.line_user_info = line
+
+    def parse_variables(self, line):
+        """Parses variables."""
+
+        line = line[1:]
+        self.line_variables = line
+        words = [word.lower().strip().rstrip(':') for word in line.split()]
+        i = iter(words)
+        vars = dict(itertools.izip(i, i))
+        for key, val in vars.iteritems():
+            setattr(self, key, val)
+
+    def parse_statement(self, file):
+        """Parses statement."""
+
+        # read statement
+        line = file.readline()
+        statement = line
+
+        # statement could span multiple lines
+        while True:
+            line = file.readline()
+            if line:
+                if line.rstrip().endswith('started with:'):
+                    break
+
+                if line.startswith('#'):
+                    # this is the start of another query header
+                    break
+                else:
+                    # add this line to statement
+                    statement += line
+            else:
+                break
+
+        self.statement = statement
+        canonicalize_results = canonicalize_statement(statement)
+        print canonicalize_results
+
+        # make sure to return the last read line from file
+        return line
+
+
+class SlowQueryLog(object):
+    """Encapsulates operations on MySQL slow query log file."""
+
+    def __init__(self, filename):
+        super(SlowQueryLog, self).__init__()
+        self._filename = filename
+
+    def process_contents(self):
+        """Process contents of MySQL slow query log."""
+
+        print 'Processing contents of {0}...'.format(self._filename)
+        try:
+            last_dt = None
+            log_item = None
+            with open(self._filename) as f:
+                line = f.readline()
+                while True:
+                    if not line:
+                        break
+
+                    # check lines to ignore
+                    if line.rstrip().endswith('started with:'):
+                        print 'IGNORED: {0}'.format(line)
+                        # ignore the next two lines
+                        line = f.readline()
+                        print 'IGNORED: {0}'.format(line)
+                        line = f.readline()
+                        print 'IGNORED: {0}'.format(line)
+
+                        # this next line is the one that needs processing
+                        line = f.readline()
+
+                        # loop again so we could recheck lines to ignore
+                        continue
+
+                    if line.startswith('# '):
+                        log_item = SlowQueryLogItem()
+                        if line.startswith('# Time'):
+                            log_item.parse_time_info(line)
+                            last_dt = log_item.dt
+
+                            print 'Date/Time:', log_item.dt
+
+                            # read user info
+                            line = f.readline()
+                        else:
+                            # no time info, this line contains user info
+                            pass
+                        log_item.parse_user_info(line)
+
+                        # read variables info
+                        log_item.parse_variables(f.readline())
+
+                        for var_name in ('query_time', 'lock_time',
+                                         'rows_sent', 'rows_examined'):
+                            print '{0}:'.format(var_name), getattr(log_item, var_name, None)
+
+                        # read statement
+                        line = log_item.parse_statement(f)
+
+                        print 'STATEMENT: {0}'.format(log_item.statement)
+
+                    else:
+                        line = f.readline()
+
+        except Exception, e:
+            print 'ERROR: {0}'.format(e)
+
+
 def main():
     global DB
     DB = '%s/sqlcanonclient.db' % tempfile.gettempdir()
@@ -1026,7 +1167,10 @@ def main():
 
     parser.add_argument('--db', help='database name', default = DB)
     parser.add_argument('--print-db-counts', action='store_true', help='Prints counts stored in DB at the end of execution.')
-    parser.add_argument('--log-file', help='Mysql query log file to process.')
+
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument('--slow-query-log-file', help='Mysql slow query log file.')
+    action.add_argument('--log-file', help='Mysql query log file to process.')
 
     action = parser.add_mutually_exclusive_group()
     action.add_argument('--sniff', action='store_true', default=False, help='launch packet sniffer')
@@ -1079,7 +1223,12 @@ def main():
         listen = args.listen
         listen_window_length = args.listen_window_length
 
-        if log_file and listen:
+        if args.slow_query_log_file:
+            print 'Processing contents from slow query log file {0}...'.format(args.slow_query_log_file)
+            slow_query_log = SlowQueryLog(args.slow_query_log_file)
+            slow_query_log.process_contents()
+
+        elif log_file and listen:
             print 'Listening for new data in {0} (window_length={1})...'.format(
                 log_file, listen_window_length
             )
