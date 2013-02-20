@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import logging
 from django.conf import settings 
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Max, Count
 from django.http import HttpResponse
 from django.shortcuts import render_to_response
 from django.template import RequestContext
@@ -102,21 +103,29 @@ def last_statements(request, window_length,
         window_length = int(window_length)
         dt = timezone.now()
         dt_start = dt - timedelta(minutes=window_length)
+        #captured_statements = CapturedStatement.objects.filter(
+        #    dt__gte=dt_start, dt__lte=dt).order_by('dt')
         captured_statements = CapturedStatement.objects.filter(
-            dt__gte=dt_start, dt__lte=dt).order_by('dt')
+            dt__gte=dt_start, dt__lte=dt).values('statement', 'hostname',
+            'canonicalized_statement', 'canonicalized_statement_hash',
+            'statement_hostname_hash').annotate(Max('dt'), Count('dt')).order_by('dt__max')
 
         # calculate counts
         counts = {}
         for captured_statement in captured_statements:
-            hash = captured_statement.statement_hostname_hash
-            if counts.has_key(hash):
-                counts[hash] += 1
+            #hash = captured_statement.statement_hostname_hash
+            hash = captured_statement['statement_hostname_hash']
+            if hash in counts:
+                #counts[hash] += 1
+                counts[hash] += captured_statement['dt__count']
             else:
-                counts[hash] = 1
+                #counts[hash] = 1
+                counts[hash] = captured_statement['dt__count']
 
         statements = []
         for captured_statement in captured_statements:
-            hash = captured_statement.statement_hostname_hash
+            #hash = captured_statement.statement_hostname_hash
+            hash = captured_statement['statement_hostname_hash']
             count = counts.get(hash, 1)
             sparkline_data_session_key = 'sparkline_data.{0}'.format(
                 int_to_hex_str(hash))

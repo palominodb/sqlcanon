@@ -21,7 +21,7 @@
         {% for statement, count, hash, sparkline_data in statements %}
 
         <tr>
-            <td>{{ statement.dt|date:"Y-m-d H:i" }}</td>
+            <td>{{ statement.dt__max|date:"Y-m-d H:i" }}</td>
             <td style="text-align: right;">{% if statement.canonicalized_statement == 'UNKNOWN' %}(unknown) {% endif %}{{ count }}</td>
             <td>{{ hash }}</td>
             <td><img src="{% url canonicalizer_sparkline sparkline_data %}" alt="Data: {{ sparkline_data }}"/></td>
