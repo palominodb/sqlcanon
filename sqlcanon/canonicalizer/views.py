@@ -17,6 +17,7 @@ from canonicalizer.lib import spark
 
 import canonicalizer.funcs as app_funcs
 import canonicalizer.models as app_models
+import canonicalizer.utils as app_utils
 
 
 LOGGER = logging.getLogger(__name__)
@@ -127,29 +128,29 @@ def last_statements(request, window_length,
         window_length = int(window_length)
         dt = timezone.now()
         dt_start = dt - timedelta(minutes=window_length)
-        #captured_statements = CapturedStatement.objects.filter(
-        #    dt__gte=dt_start, dt__lte=dt).order_by('dt')
-        captured_statements = CapturedStatement.objects.filter(
-            dt__gte=dt_start, dt__lte=dt).values('statement', 'hostname',
-            'canonicalized_statement', 'canonicalized_statement_hash',
-            'statement_hostname_hash').annotate(Max('dt'), Count('dt')).order_by('dt__max')
+        captured_statements = (
+            app_models.StatementData.objects
+            .filter(dt__gte=dt_start, dt__lte=dt)
+            .values(
+                'statement',
+                'hostname',
+                'canonicalized_statement',
+                'canonicalized_statement_hash',
+                'canonicalized_statement_hostname_hash')
+            .annotate(Max('dt'), Count('dt')).order_by('dt__max'))
 
         # calculate counts
         counts = {}
         for captured_statement in captured_statements:
-            #hash = captured_statement.statement_hostname_hash
-            hash = captured_statement['statement_hostname_hash']
+            hash = captured_statement['canonicalized_statement_hostname_hash']
             if hash in counts:
-                #counts[hash] += 1
                 counts[hash] += captured_statement['dt__count']
             else:
-                #counts[hash] = 1
                 counts[hash] = captured_statement['dt__count']
 
         statements = []
         for captured_statement in captured_statements:
-            #hash = captured_statement.statement_hostname_hash
-            hash = captured_statement['statement_hostname_hash']
+            hash = captured_statement['canonicalized_statement_hostname_hash']
             count = counts.get(hash, 1)
             sparkline_data_session_key = 'sparkline_data.{0}'.format(
                 int_to_hex_str(hash))
@@ -157,7 +158,8 @@ def last_statements(request, window_length,
                 sparkline_data_session_key, [])
             if sparkline_data:
                 if sparkline_data[-1] != count:
-                    # add new data only if it is different from the last data added
+                    # add new data only if it is different from the last data
+                    # added
                     sparkline_data.append(count)
             else:
                 sparkline_data.append(count)
@@ -169,7 +171,7 @@ def last_statements(request, window_length,
             statements.append([
                 captured_statement,
                 count,
-                int_to_hex_str(hash),
+                app_utils.int_to_hex_str(hash),
                 ','.join([str(i) for i in sparkline_data])
             ])
             request.session[sparkline_data_session_key] = sparkline_data
