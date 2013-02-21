@@ -163,11 +163,10 @@ def last_statements(request, window_length,
                     sparkline_data.append(count)
             else:
                 sparkline_data.append(count)
-            COUNT_LIMIT = 20
-            if len(sparkline_data) > COUNT_LIMIT:
+            if len(sparkline_data) > settings.SPARKLINE_DATA_COUNT_LIMIT:
                 # limit number of items in sparkline data
-                sparkline_data = sparkline_data[-COUNT_LIMIT:len(
-                    sparkline_data)]
+                sparkline_data = sparkline_data[
+                    -settings.SPARKLINE_DATA_COUNT_LIMIT:len(sparkline_data)]
             statements.append([
                 statement_data,
                 count,

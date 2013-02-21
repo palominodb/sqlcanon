@@ -153,6 +153,7 @@ SITE_LOGGERS = {
 }
 
 CAPTURED_STATEMENT_ROW_LIMIT = 1024
+SPARKLINE_DATA_COUNT_LIMIT = 20
 
 try:
     from local_settings import *
