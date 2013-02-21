@@ -8,15 +8,16 @@
         <tr>
             <th>Instances</th>
             <th>Hash</th>
-            <th>Hostname</th>
             <th>Statement</th>
+            <th>Hostname</th>
         </tr>
-        {% for statement in statements %}
+        {% for statement_data in statement_data_qs %}
             <tr>
-                <td>{{ statement.instances }}</td>
-                <td>{{ statement.statement_hostname_hash_as_hex_str }}</td>
-                <td>{{ statement.hostname }}</td>
-                <td>{{ statement.statement }}</td>
+                <td>{{ statement_data.id__count }}</td>
+                <td>{{ statement_data.canonicalized_statement_hostname_hash }}</td>
+                <td>{{ statement_data.canonicalized_statement }}</td>
+                <td>{{ statement_data.hostname }}</td>
+
             </tr>
         {% endfor %}
     </table>

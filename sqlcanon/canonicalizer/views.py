@@ -128,7 +128,7 @@ def last_statements(request, window_length,
         window_length = int(window_length)
         dt = timezone.now()
         dt_start = dt - timedelta(minutes=window_length)
-        captured_statements = (
+        statement_data_qs = (
             app_models.StatementData.objects
             .filter(dt__gte=dt_start, dt__lte=dt)
             .values(
@@ -141,16 +141,16 @@ def last_statements(request, window_length,
 
         # calculate counts
         counts = {}
-        for captured_statement in captured_statements:
-            hash = captured_statement['canonicalized_statement_hostname_hash']
+        for statement_data in statement_data_qs:
+            hash = statement_data['canonicalized_statement_hostname_hash']
             if hash in counts:
-                counts[hash] += captured_statement['dt__count']
+                counts[hash] += statement_data['dt__count']
             else:
-                counts[hash] = captured_statement['dt__count']
+                counts[hash] = statement_data['dt__count']
 
         statements = []
-        for captured_statement in captured_statements:
-            hash = captured_statement['canonicalized_statement_hostname_hash']
+        for statement_data in statement_data_qs:
+            hash = statement_data['canonicalized_statement_hostname_hash']
             count = counts.get(hash, 1)
             sparkline_data_session_key = 'sparkline_data.{0}'.format(
                 int_to_hex_str(hash))
@@ -169,7 +169,7 @@ def last_statements(request, window_length,
                 sparkline_data = sparkline_data[-COUNT_LIMIT:len(
                     sparkline_data)]
             statements.append([
-                captured_statement,
+                statement_data,
                 count,
                 app_utils.int_to_hex_str(hash),
                 ','.join([str(i) for i in sparkline_data])
@@ -201,7 +201,18 @@ def sparkline(request, data):
 def top_queries(request, n, template='canonicalizer/top_queries.html'):
     try:
         n = int(n)
-        statements = CanonicalizedStatement.objects.order_by('-instances')[:n]
+
+        #statements = CanonicalizedStatement.objects.order_by('-instances')[:n]
+
+        statement_data_qs = (
+            app_models.StatementData.objects
+            .values(
+                'canonicalized_statement',
+                'hostname',
+                'canonicalized_statement_hostname_hash')
+            .annotate(Count('id')).order_by('-id__count')[:n]
+        )
+
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
     except Exception, e:
