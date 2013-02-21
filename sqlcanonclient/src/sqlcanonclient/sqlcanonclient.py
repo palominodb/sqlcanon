@@ -559,7 +559,7 @@ def canonicalize_statement(statement):
         elif stmt.get_type() == STATEMENT_UNKNOWN:
             #print 'UNKNOWN: => {0} <='.format(stmt)
             result.append(
-                ('{0}'.format(stmt), None, None, [])
+                ('{0}'.format(stmt), '{0}'.format(stmt), STATEMENT_UNKNOWN, [])
             )
             continue
 
@@ -1015,11 +1015,12 @@ def run_packet_sniffer(args):
         print '%d packets received, %d packets dropped, %d packets dropped by interface' % p.stats()
 
 
-class SlowQueryLogItem(object):
-    """Encapsulates information about a statement log."""
+class SlowQueryLogItemParser(object):
+    """Slow query log item parser."""
 
     def __init__(self):
-        super(SlowQueryLogItem, self).__init__()
+        super(SlowQueryLogItemParser, self).__init__()
+
         self.line_time_info = None
         self.line_user_info = None
         self.line_variables = None
@@ -1034,6 +1035,7 @@ class SlowQueryLogItem(object):
 
     def parse_time_info(self, line):
         """Parses time info."""
+
         __, __, date_str, time_str = line.split()
         self.dt = datetime.strptime(' '.join([date_str, time_str]),
             '%y%m%d %H:%M:%S')
@@ -1052,8 +1054,8 @@ class SlowQueryLogItem(object):
         words = [word.lower().strip().rstrip(':') for word in line.split()]
         i = iter(words)
         vars = dict(itertools.izip(i, i))
-        for key, val in vars.iteritems():
-            setattr(self, key, val)
+        for k, v in vars.iteritems():
+            setattr(self, k, v)
 
     def parse_statement(self, file):
         """Parses statement."""
@@ -1079,80 +1081,103 @@ class SlowQueryLogItem(object):
                 break
 
         self.statement = statement
-        canonicalize_results = canonicalize_statement(statement)
-        print canonicalize_results
 
         # make sure to return the last read line from file
         return line
 
 
-class SlowQueryLog(object):
+class SlowQueryLogProcessor(object):
     """Encapsulates operations on MySQL slow query log file."""
 
-    def __init__(self, filename):
-        super(SlowQueryLog, self).__init__()
-        self._filename = filename
+    SLOW_QUERY_LOG_VAR_NAMES = ['query_time', 'lock_time', 'rows_sent',
+                           'rows_examined']
 
-    def process_contents(self):
+    def __init__(self, args):
+        super(SlowQueryLogProcessor, self).__init__()
+
+        self._args = args
+
+    def _send_data_to_server(self, slow_query_log_item_parser):
+        """Sends data to server."""
+
+        results = canonicalize_statement(slow_query_log_item_parser.statement)
+        for statement, __, canonicalized_statement, __ in results:
+            params = dict(
+                statement=statement,
+                hostname=HOSTNAME,
+                canonicalized_statement=canonicalized_statement,
+                canonicalized_statement_hash=mmh3.hash(canonicalized_statement),
+                canonicalized_statement_hostname_hash=mmh3.hash(
+                    '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
+                query_time=slow_query_log_item_parser.query_time,
+                lock_time=slow_query_log_item_parser.lock_time,
+                rows_sent=slow_query_log_item_parser.rows_sent,
+                rows_examined=slow_query_log_item_parser.rows_examined
+            )
+            urlencoded_params = urllib.urlencode(params)
+            try:
+                response = url_request(
+                    self._args.server_url, data=urlencoded_params)
+                handle_explain(response.content)
+            except Exception, e:
+                print 'ERROR: {0}'.format(e)
+
+    def process_log_contents(self):
         """Process contents of MySQL slow query log."""
 
-        print 'Processing contents of {0}...'.format(self._filename)
-        try:
-            last_dt = None
-            log_item = None
-            with open(self._filename) as f:
-                line = f.readline()
-                while True:
-                    if not line:
-                        break
+        last_dt = None
+        log_item_parser = None
+        with open(self._args.slow_query_log_file) as f:
+            line = f.readline()
+            while True:
+                if not line:
+                    break
 
-                    # check lines to ignore
-                    if line.rstrip().endswith('started with:'):
-                        print 'IGNORED: {0}'.format(line)
-                        # ignore the next two lines
+                if line.rstrip().endswith('started with:'):
+                    print 'IGNORED: {0}'.format(line)
+                    # ignore the next two lines
+                    line = f.readline()
+                    print 'IGNORED: {0}'.format(line)
+                    line = f.readline()
+                    print 'IGNORED: {0}'.format(line)
+
+                    # this next line is the one that needs processing
+                    line = f.readline()
+
+                    # loop again so we could recheck lines to ignore
+                    continue
+
+                if line.startswith('# '):
+                    log_item_parser = SlowQueryLogItemParser()
+                    if line.startswith('# Time'):
+                        log_item_parser.parse_time_info(line)
+                        last_dt = log_item_parser.dt
+
+                        print 'Date/Time:', log_item_parser.dt
+
+                        # read user info
                         line = f.readline()
-                        print 'IGNORED: {0}'.format(line)
-                        line = f.readline()
-                        print 'IGNORED: {0}'.format(line)
-
-                        # this next line is the one that needs processing
-                        line = f.readline()
-
-                        # loop again so we could recheck lines to ignore
-                        continue
-
-                    if line.startswith('# '):
-                        log_item = SlowQueryLogItem()
-                        if line.startswith('# Time'):
-                            log_item.parse_time_info(line)
-                            last_dt = log_item.dt
-
-                            print 'Date/Time:', log_item.dt
-
-                            # read user info
-                            line = f.readline()
-                        else:
-                            # no time info, this line contains user info
-                            pass
-                        log_item.parse_user_info(line)
-
-                        # read variables info
-                        log_item.parse_variables(f.readline())
-
-                        for var_name in ('query_time', 'lock_time',
-                                         'rows_sent', 'rows_examined'):
-                            print '{0}:'.format(var_name), getattr(log_item, var_name, None)
-
-                        # read statement
-                        line = log_item.parse_statement(f)
-
-                        print 'STATEMENT: {0}'.format(log_item.statement)
-
                     else:
-                        line = f.readline()
+                        # no time info, this line contains user info
+                        pass
+                    log_item_parser.parse_user_info(line)
 
-        except Exception, e:
-            print 'ERROR: {0}'.format(e)
+                    # read variables info
+                    log_item_parser.parse_variables(f.readline())
+
+                    for var_name in (
+                            SlowQueryLogProcessor.SLOW_QUERY_LOG_VAR_NAMES):
+                        print '{0}:'.format(var_name), getattr(
+                            log_item_parser, var_name, None)
+
+                    # read statement
+                    line = log_item_parser.parse_statement(f)
+
+                    print 'STATEMENT: {0}'.format(log_item_parser.statement)
+                    self._send_data_to_server(log_item_parser)
+
+                else:
+                    line = f.readline()
 
 
 def main():
@@ -1171,6 +1196,15 @@ def main():
     action = parser.add_mutually_exclusive_group()
     action.add_argument('--slow-query-log-file', help='Mysql slow query log file.')
     action.add_argument('--log-file', help='Mysql query log file to process.')
+
+    parser.add_argument(
+        '--send-server-data',
+        action='store_true',
+        help='Send data to server using the URL specified in --server-url.')
+    parser.add_argument(
+        '--server-url',
+        help='URL to be used for sending statement data.',
+        default='http://localhost:8000/save-statement-data/')
 
     action = parser.add_mutually_exclusive_group()
     action.add_argument('--sniff', action='store_true', default=False, help='launch packet sniffer')
@@ -1194,7 +1228,6 @@ def main():
     #print type(args)
     #print args
     #print dir(args)
-
 
     if args.db:
         DB = args.db
@@ -1225,8 +1258,8 @@ def main():
 
         if args.slow_query_log_file:
             print 'Processing contents from slow query log file {0}...'.format(args.slow_query_log_file)
-            slow_query_log = SlowQueryLog(args.slow_query_log_file)
-            slow_query_log.process_contents()
+            slow_query_log_processor = SlowQueryLogProcessor(args)
+            slow_query_log_processor.process_log_contents()
 
         elif log_file and listen:
             print 'Listening for new data in {0} (window_length={1})...'.format(

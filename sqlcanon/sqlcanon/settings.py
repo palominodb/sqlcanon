@@ -152,7 +152,7 @@ SITE_LOGGERS = {
     },
 }
 
-CAPTURED_STATEMENT_ROW_LIMIT = 100
+CAPTURED_STATEMENT_ROW_LIMIT = 1024
 
 try:
     from local_settings import *

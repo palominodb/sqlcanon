@@ -12,90 +12,114 @@ import mmh3
 from canonicalizer.lib.canonicalizers import STATEMENT_UNKNOWN, \
     canonicalize_statement, db_increment_canonicalized_statement_count
 from canonicalizer.lib.utils import int_to_hex_str
-from canonicalizer.models import CapturedStatement, CanonicalizedStatement
+from canonicalizer.models import CanonicalizedStatement
 from canonicalizer.lib import spark
+
+import canonicalizer.funcs as app_funcs
+import canonicalizer.models as app_models
+
 
 LOGGER = logging.getLogger(__name__)
 
+
 @csrf_exempt
-def process_captured_statement(request):
+def save_statement_data(request):
+    """Saves statement data."""
+
+    def post_vars(POST):
+        """Returns variables from request POST."""
+
+        statement = POST.get('statement')
+
+        hostname = POST.get('hostname')
+
+        canonicalized_statement = POST.get(
+            'canonicalized_statement')
+
+        canonicalized_statement_hash = POST.get(
+            'canonicalized_statement_hash')
+        if canonicalized_statement_hash:
+            canonicalized_statement_hash = int(
+                canonicalized_statement_hash)
+
+        canonicalized_statement_hostname_hash = POST.get(
+            'canonicalized_statement_hostname_hash')
+        if canonicalized_statement_hostname_hash:
+            canonicalized_statement_hostname_hash = int(
+                canonicalized_statement_hostname_hash)
+
+        query_time = POST.get('query_time')
+        if query_time:
+            query_time = float(query_time)
+
+        lock_time = POST.get('lock_time')
+        if lock_time:
+            lock_time = float(lock_time)
+
+        rows_sent = POST.get('rows_sent')
+        if rows_sent:
+            rows_sent = float(rows_sent)
+
+        rows_examined = POST.get('rows_examined')
+        if rows_examined:
+            rows_examined = float(rows_examined)
+
+        return (
+            statement,
+            hostname,
+            canonicalized_statement,
+            canonicalized_statement_hash,
+            canonicalized_statement_hostname_hash,
+            query_time,
+            lock_time,
+            rows_sent,
+            rows_examined
+        )
+
+    # store here the statements that needs to be EXPLAINed
     explain = []
     try:
         if request.method == 'POST':
-            hostname = unicode(request.POST['hostname'])
-            statement = unicode(request.POST['statement'])
-            LOGGER.debug(u'Hostname: {0}, Statement: {1}'.format(hostname, statement))
+            post_vars_packed = post_vars(request.POST)
+            LOGGER.debug('request.POST={0}'.format(request.POST))
+            LOGGER.debug('post_vars_packed={0}'.format(post_vars_packed))
+
+            (
+                statement,
+                hostname,
+                canonicalized_statement,
+                canonicalized_statement_hash,
+                canonicalized_statement_hostname_hash,
+                query_time,
+                lock_time,
+                rows_sent,
+                rows_examined
+            ) = post_vars_packed
 
             dt = timezone.now()
-            canonicalize_statement_results = canonicalize_statement(statement)
-            for statement_orig, statement_normalized, statement_canonicalized, values \
-                    in canonicalize_statement_results:
 
-                if not statement_canonicalized:
-                    statement_canonicalized = STATEMENT_UNKNOWN
+            is_select_statement = canonicalized_statement.startswith('SELECT ')
+            if is_select_statement:
+                count = (app_models.StatementData.objects.filter(
+                    canonicalized_statement_hostname_hash=
+                        canonicalized_statement_hostname_hash)
+                    .count())
 
-                is_select_statement = statement_canonicalized.strip().startswith('SELECT ')
-                #LOGGER.debug('is_select_statement: {0}'.format(is_select_statement))
-                hash = mmh3.hash(statement_canonicalized)
-                statement_hostname_hash = mmh3.hash('{0}{1}'.format(
-                    statement_canonicalized, hostname
-                ))
+                # first_seen is set to True, if this is the first time we saw
+                # this statement
+                first_seen = not count
 
-                if is_select_statement:
-                    #LOGGER.debug('statement_hostname_hash: {0}'.format(statement_hostname_hash))
-                    count = CanonicalizedStatement.objects.filter(
-                        statement_hostname_hash=statement_hostname_hash).count()
-                    #LOGGER.debug('count: {0}'.format(count))
-                    #is_new = not (CapturedStatement.objects.filter(
-                    #    statement_hostname_hash=statement_hostname_hash).count())
-                    is_new = not count
-                    #LOGGER.debug('is_new: {0}'.format(is_new))
-                    if is_new:
-                        explain.append(statement_orig)
-                        LOGGER.debug('Added statement for EXPLAIN execution: {0}'.format(
-                            statement_orig
-                        ))
+                if first_seen:
+                    explain.append(statement)
 
-                db_increment_canonicalized_statement_count(
-                    canonicalized_statement=statement_canonicalized,
-                    canonicalized_statement_hash=hash,
-                    hostname=hostname,
-                    statement_hostname_hash=statement_hostname_hash)
-
-                qs = CapturedStatement.objects.order_by('-last_updated')[:1]
-                captured_statement = None
-                if qs:
-                    captured_statement = qs[0]
-                if captured_statement:
-                    sequence_id = (captured_statement.sequence_id + 1) % settings.CAPTURED_STATEMENT_ROW_LIMIT
-                else:
-                    sequence_id = 1
-                try:
-                    captured_statement = CapturedStatement.objects.get(
-                        sequence_id=sequence_id)
-                    captured_statement.dt = dt
-                    captured_statement.statement = statement_orig
-                    captured_statement.hostname = hostname
-                    captured_statement.canonicalized_statement = statement_canonicalized
-                    captured_statement.canonicalized_statement_hash = hash
-                    captured_statement.statement_hostname_hash = statement_hostname_hash
-                    captured_statement.save()
-                except ObjectDoesNotExist:
-                    CapturedStatement.objects.create(
-                        dt=dt,
-                        statement=statement_orig,
-                        hostname=hostname,
-                        canonicalized_statement=statement_canonicalized,
-                        canonicalized_statement_hash=hash,
-                        statement_hostname_hash=statement_hostname_hash,
-                        sequence_id=sequence_id,
-                    )
+                app_funcs.save_statement_data(dt, *post_vars_packed)
 
         ret = simplejson.dumps(dict(explain=explain))
     except Exception, e:
         LOGGER.exception('{0}'.format(e))
         ret = simplejson.dumps(dict(error='{0}'.format(e)))
     return HttpResponse(ret, mimetype='application/json')
+
 
 def last_statements(request, window_length,
                     template='canonicalizer/last_statements.html'):

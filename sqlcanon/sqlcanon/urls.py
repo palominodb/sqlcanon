@@ -10,6 +10,12 @@ urlpatterns = patterns('',
     # url(r'^sqlcanon/', include('sqlcanon.foo.urls')),
 
     url(r'^$', 'canonicalizer.views.home', name='home'),
+
+    url(
+        r'^save-statement-data/',
+        'canonicalizer.views.save_statement_data',
+        name='save_statement_data'),
+
     url(r'^canonicalizer/', include('canonicalizer.urls')),
 
     # Uncomment the admin/doc line below to enable admin documentation:
