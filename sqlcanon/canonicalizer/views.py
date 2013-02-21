@@ -1,24 +1,18 @@
-from datetime import datetime, timedelta
+import datetime
 import logging
+
 from django.conf import settings 
-from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Max, Count
 from django.http import HttpResponse
 from django.shortcuts import render_to_response
 from django.template import RequestContext
 from django.utils import timezone, simplejson
 from django.views.decorators.csrf import csrf_exempt
-import mmh3
-from canonicalizer.lib.canonicalizers import STATEMENT_UNKNOWN, \
-    canonicalize_statement, db_increment_canonicalized_statement_count
-from canonicalizer.lib.utils import int_to_hex_str
-from canonicalizer.models import CanonicalizedStatement
-from canonicalizer.lib import spark
 
 import canonicalizer.funcs as app_funcs
+import canonicalizer.lib.spark as spark
 import canonicalizer.models as app_models
 import canonicalizer.utils as app_utils
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -127,7 +121,7 @@ def last_statements(request, window_length,
     try:
         window_length = int(window_length)
         dt = timezone.now()
-        dt_start = dt - timedelta(minutes=window_length)
+        dt_start = dt - datetime.timedelta(minutes=window_length)
         statement_data_qs = (
             app_models.StatementData.objects
             .filter(dt__gte=dt_start, dt__lte=dt)
@@ -153,7 +147,7 @@ def last_statements(request, window_length,
             hash = statement_data['canonicalized_statement_hostname_hash']
             count = counts.get(hash, 1)
             sparkline_data_session_key = 'sparkline_data.{0}'.format(
-                int_to_hex_str(hash))
+                app_utils.int_to_hex_str(hash))
             sparkline_data = request.session.get(
                 sparkline_data_session_key, [])
             if sparkline_data:
