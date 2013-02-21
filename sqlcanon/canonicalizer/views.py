@@ -76,9 +76,6 @@ def save_statement_data(request):
     try:
         if request.method == 'POST':
             post_vars_packed = post_vars(request.POST)
-            LOGGER.debug('request.POST={0}'.format(request.POST))
-            LOGGER.debug('post_vars_packed={0}'.format(post_vars_packed))
-
             (
                 statement,
                 hostname,
@@ -107,7 +104,7 @@ def save_statement_data(request):
                 if first_seen:
                     explain.append(statement)
 
-                app_funcs.save_statement_data(dt, *post_vars_packed)
+            app_funcs.save_statement_data(dt, *post_vars_packed)
 
         ret = simplejson.dumps(dict(explain=explain))
     except Exception, e:
@@ -174,12 +171,14 @@ def last_statements(request, window_length,
     except Exception, e:
         LOGGER.exception('{0}'.format(e))
 
+
 def home(request, template='home.html'):
     try:
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
     except Exception, e:
         LOGGER.exception('{0}'.format(e))
+
 
 def sparkline(request, data):
     try:
@@ -191,11 +190,10 @@ def sparkline(request, data):
     except Exception, e:
         LOGGER.exception('{0}'.format(e))
 
+
 def top_queries(request, n, template='canonicalizer/top_queries.html'):
     try:
         n = int(n)
-
-        #statements = CanonicalizedStatement.objects.order_by('-instances')[:n]
 
         statement_data_qs = (
             app_models.StatementData.objects
@@ -203,8 +201,7 @@ def top_queries(request, n, template='canonicalizer/top_queries.html'):
                 'canonicalized_statement',
                 'hostname',
                 'canonicalized_statement_hostname_hash')
-            .annotate(Count('id')).order_by('-id__count')[:n]
-        )
+            .annotate(Count('id')).order_by('-id__count')[:n])
 
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))

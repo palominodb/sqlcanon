@@ -27,7 +27,7 @@ from sqlparse.tokens import Token
 
 PP = pprint.PrettyPrinter(indent=4)
 
-PROCESS_CAPTURED_STATEMENT_URL = 'http://localhost:8000/canonicalizer/process_captured_statement/'
+ARGS = None
 
 STATEMENT_UNKNOWN = 'UNKNOWN'
 
@@ -42,9 +42,8 @@ HOSTNAME = socket.gethostname()
 
 
 class url_request(object):
-    """
-    wrapper for urllib2
-    """
+    """wrapper for urllib2"""
+
     def __init__(self, url, data=None, headers={}):
         request = urllib2.Request(url, data=data, headers=headers)
         try:
@@ -958,29 +957,40 @@ def process_packet(pktlen, data, timestamp):
     print payload
     print
 
-    # MySQL queries start on the 6th char (?)
-    payload = payload[5:]
-
-    params = dict(
-        statement=payload,
-        hostname=HOSTNAME
-    )
-    params = urllib.urlencode(params)
     try:
-        #handler = urllib2.urlopen(PROCESS_CAPTURED_STATEMENT_URL, params)
-        #print 'handler.code:', handler.code
-        response = url_request(PROCESS_CAPTURED_STATEMENT_URL, data=params)
-        #print 'response.content = {0}'.format(response.content)
-        #print 'response.code = {0}'.format(response.code)
-        handle_explain(response.content)
+        # MySQL queries start on the 6th char (?)
+        payload = payload[5:]
+
+        if payload:
+            results = canonicalize_statement(payload)
+            for statement, __, canonicalized_statement, __ in results:
+                params = dict(
+                    statement=statement,
+                    hostname=HOSTNAME,
+                    canonicalized_statement=canonicalized_statement,
+                    canonicalized_statement_hash=mmh3.hash(
+                        canonicalized_statement),
+                    canonicalized_statement_hostname_hash=mmh3.hash(
+                        '{0}{1}'.format(canonicalized_statement, HOSTNAME)))
+                urlencoded_params = urllib.urlencode(params)
+
+                try:
+                    # send data to server,
+                    # even if --send-server-data is not specified
+                    response = url_request(
+                        ARGS.server_url, data=urlencoded_params)
+                    handle_explain(response.content)
+                except Exception, e:
+                    print 'ERROR: {0}'.format(e)
+
     except Exception, e:
-        print 'Exception: {0}'.format(e)
+        print 'ERROR: {0}'.format(e)
 
 def run_packet_sniffer(args):
     if not args.interface:
         print 'Monitoring interface lo0'
 
-    print 'Sending captured statements to: {0}'.format(PROCESS_CAPTURED_STATEMENT_URL)
+    print 'Sending captured statements to: {0}'.format(args.server_url)
 
     #if len(sys.argv) < 3:
     #    print 'usage: {0} <interface> <expr>'.format(sys.argv[0])
@@ -1207,14 +1217,15 @@ def main():
         default='http://localhost:8000/save-statement-data/')
 
     action = parser.add_mutually_exclusive_group()
-    action.add_argument('--sniff', action='store_true', default=False, help='launch packet sniffer')
-    action.add_argument('--listen', action='store_true', help='Opens up log file and waits for newly written data.')
+    action.add_argument(
+        '--sniff', action='store_true', default=False,
+        help='launch packet sniffer')
+    action.add_argument(
+        '--listen', action='store_true',
+        help='Opens up log file and waits for newly written data.')
 
     parser.add_argument('--interface', help='interface to sniff from', default='lo0')
     parser.add_argument('--filter', default='dst port 3306', help='pcap-filter')
-    parser.add_argument(
-        '--capture-url',
-        help='URL of captured statement processor', default='http://localhost:8000/canonicalizer/process_captured_statement/'),
 
     parser.add_argument('--listen-window-length', default=5, type=int, help='Length of period of query list filter in number of minutes. (default: 5)')
 
@@ -1225,6 +1236,9 @@ def main():
     parser.add_argument('--mysql-password', help='mysql password')
 
     args = parser.parse_args()
+    global ARGS
+    ARGS = args
+
     #print type(args)
     #print args
     #print dir(args)
@@ -1242,10 +1256,6 @@ def main():
         # ask for password if password is not None but is an empty string
         if not MYSQL_PASSWORD:
             MYSQL_PASSWORD = getpass.getpass()
-
-    global PROCESS_CAPTURED_STATEMENT_URL
-    if args.capture_url:
-        PROCESS_CAPTURED_STATEMENT_URL = args.capture_url
 
     try:
         if args.sniff:
