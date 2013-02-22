@@ -918,8 +918,8 @@ def init_db():
 def handle_explain(response_content, db=None):
     try:
         response = json.loads(response_content)
-        statements = response.get('explain', [])
-        if statements:
+        explain_items = response.get('explain', [])
+        if explain_items:
             connect_options = {}
             if 'h' in EXPLAIN_OPTIONS:
                 connect_options['host'] = EXPLAIN_OPTIONS['h']
@@ -934,7 +934,9 @@ def handle_explain(response_content, db=None):
             conn = MySQLdb.connect(**connect_options)
             with conn:
                 cur = conn.cursor()
-                for statement in statements:
+                for explain_item in explain_items:
+                    statement = explain_item['statement']
+                    statement_data_id = explain_item['statement_data_id']
                     try:
                         print '#' * 80
                         print 'Executing EXPLAIN {0}...'.format(statement)
@@ -942,9 +944,41 @@ def handle_explain(response_content, db=None):
                         cur.execute(sql)
                         description = cur.description
                         print 'description: {0}'.format(description)
-                        rows = cur.fetchall()
-                        for row in rows:
-                            print 'row: {0}'.format(row)
+                        fetched_rows = cur.fetchall()
+                        explain_rows = []
+                        columns = [
+                            'select_id',
+                            'select_type',
+                            'table',
+                            'type',
+                            'possible_keys',
+                            'key',
+                            'key_len',
+                            'ref',
+                            'rows',
+                            'extra']
+                        for fetched_row in fetched_rows:
+                            print 'fetched_row: {0}'.format(fetched_row)
+                            explain_rows.append(dict(zip(
+                                columns, fetched_row)))
+
+                        params = dict(
+                            statement_data_id=statement_data_id,
+                            explain_rows=json.dumps(explain_rows),
+                        )
+                        if db:
+                            params['db'] = db
+                        urlencoded_params = urllib.urlencode(params)
+                        try:
+                            response = url_request(
+                                ARGS.save_explained_statement_url,
+                                data=urlencoded_params)
+                            print 'response.content = {0}'.format(
+                                response.content)
+                            print 'response.code = {0}'.format(
+                                response.code)
+                        except Exception, e:
+                            print 'ERROR: {0}'.format(e)
                         print '#' * 80
                         print
                     except Exception, e:
@@ -1221,6 +1255,10 @@ def main():
         '--submit-url',
         help='URL to be used for sending statement data.',
         default='http://localhost:8000/save-statement-data/',)
+    parser.add_argument(
+        '--save-explained-statement-url', '--sesu',
+        help='URL to be used for saving explain results.',
+        default='http://localhost:8000/save-explained-statement/',)
 
 
     action = parser.add_mutually_exclusive_group()

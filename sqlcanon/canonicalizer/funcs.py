@@ -5,6 +5,29 @@ from django.core.exceptions import ObjectDoesNotExist
 
 import canonicalizer.models as app_models
 
+
+def save_explained_statement(statement_data_id, explain_rows, db=None):
+    """Saves explain results."""
+
+    statement_data = app_models.StatementData.objects.get(
+        pk=statement_data_id)
+    explained_statement = app_models.ExplainedStatement.objects.create(
+        dt=statement_data.dt,
+        statement=statement_data.statement,
+        hostname=statement_data.hostname,
+        canonicalized_statement=statement_data.canonicalized_statement,
+        canonicalized_statement_hash=
+            statement_data.canonicalized_statement_hash,
+        canonicalized_statement_hostname_hash=
+            statement_data.canonicalized_statement_hostname_hash,
+        db=db)
+    for explain_row in explain_rows:
+        app_models.ExplainResult.objects.create(
+            explained_statement=explained_statement,
+            **explain_row)
+    return explained_statement
+
+
 def save_statement_data(
         dt,
         statement, hostname,
@@ -46,7 +69,7 @@ def save_statement_data(
         statement_data.rows_examined = rows_examined
         statement_data.save()
     except ObjectDoesNotExist:
-        app_models.StatementData.objects.create(
+        statement_data = app_models.StatementData.objects.create(
             dt=dt,
             statement=statement,
             hostname=hostname,
@@ -60,3 +83,4 @@ def save_statement_data(
             rows_examined=rows_examined,
             sequence_id=sequence_id,
         )
+    return statement_data

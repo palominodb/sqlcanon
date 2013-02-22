@@ -12,4 +12,13 @@ class StatementDataAdmin(admin.ModelAdmin):
         'sequence_id', 'last_updated')
 
 
+class ExplainResultInline(admin.TabularInline):
+    model = app_models.ExplainResult
+
+
+class ExplainedStatementAdmin(admin.ModelAdmin):
+    inlines = [ExplainResultInline,]
+
+
 admin.site.register(app_models.StatementData, StatementDataAdmin)
+admin.site.register(app_models.ExplainedStatement, ExplainedStatementAdmin)

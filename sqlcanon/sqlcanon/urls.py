@@ -16,6 +16,11 @@ urlpatterns = patterns('',
         'canonicalizer.views.save_statement_data',
         name='save_statement_data'),
 
+    url(
+        r'^save-explained-statement/',
+        'canonicalizer.views.save_explained_statement',
+        name='save_explained_statement'),
+
     url(r'^last-statements/(?P<window_length>\d+)/',
         'canonicalizer.views.last_statements',
         name='last_statements'),

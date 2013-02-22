@@ -18,44 +18,80 @@ LOGGER = logging.getLogger(__name__)
 
 
 @csrf_exempt
+def save_explained_statement(request):
+    """Saves explain data."""
+
+    def post_vars(post):
+        statement_data_id = int(post.get('statement_data_id'))
+        explain_rows = simplejson.loads(post.get('explain_rows'))
+        db = post.get('db')
+
+        return (
+            statement_data_id,
+            explain_rows,
+            db)
+
+    rv = {}
+    try:
+        if request.method == 'POST':
+            post_vars_packed = post_vars(request.POST)
+            (
+                statement_data_id,
+                explain_rows,
+                db
+            ) = post_vars_packed
+            LOGGER.debug('post_vars_packed = {0}'.format(post_vars_packed))
+            explained_statement = app_funcs.save_explained_statement(
+                statement_data_id,
+                explain_rows,
+                db)
+
+        ret = simplejson.dumps(rv)
+    except Exception, e:
+        LOGGER.exception('{0}'.format(e))
+        ret = simplejson.dumps(dict(error='{0}'.format(e)))
+    return HttpResponse(ret, mimetype='application/json')
+
+
+@csrf_exempt
 def save_statement_data(request):
     """Saves statement data."""
 
-    def post_vars(POST):
-        """Returns variables from request POST."""
+    def post_vars(post):
+        """Returns variables from request post."""
 
-        statement = POST.get('statement')
+        statement = post.get('statement')
 
-        hostname = POST.get('hostname')
+        hostname = post.get('hostname')
 
-        canonicalized_statement = POST.get(
+        canonicalized_statement = post.get(
             'canonicalized_statement')
 
-        canonicalized_statement_hash = POST.get(
+        canonicalized_statement_hash = post.get(
             'canonicalized_statement_hash')
         if canonicalized_statement_hash:
             canonicalized_statement_hash = int(
                 canonicalized_statement_hash)
 
-        canonicalized_statement_hostname_hash = POST.get(
+        canonicalized_statement_hostname_hash = post.get(
             'canonicalized_statement_hostname_hash')
         if canonicalized_statement_hostname_hash:
             canonicalized_statement_hostname_hash = int(
                 canonicalized_statement_hostname_hash)
 
-        query_time = POST.get('query_time')
+        query_time = post.get('query_time')
         if query_time:
             query_time = float(query_time)
 
-        lock_time = POST.get('lock_time')
+        lock_time = post.get('lock_time')
         if lock_time:
             lock_time = float(lock_time)
 
-        rows_sent = POST.get('rows_sent')
+        rows_sent = post.get('rows_sent')
         if rows_sent:
             rows_sent = float(rows_sent)
 
-        rows_examined = POST.get('rows_examined')
+        rows_examined = post.get('rows_examined')
         if rows_examined:
             rows_examined = float(rows_examined)
 
@@ -94,6 +130,7 @@ def save_statement_data(request):
                 post_vars_packed))
 
             is_select_statement = canonicalized_statement.startswith('SELECT ')
+            first_seen = False
             if is_select_statement:
                 count = (app_models.StatementData.objects.filter(
                     canonicalized_statement_hostname_hash=
@@ -104,10 +141,13 @@ def save_statement_data(request):
                 # this statement
                 first_seen = not count
 
-                if first_seen:
-                    explain.append(statement)
+            statement_data = app_funcs.save_statement_data(
+                dt, *post_vars_packed)
 
-            app_funcs.save_statement_data(dt, *post_vars_packed)
+            if first_seen:
+                explain.append(dict(
+                    statement=statement,
+                    statement_data_id=statement_data.id))
 
         ret = simplejson.dumps(dict(explain=explain))
     except Exception, e:
