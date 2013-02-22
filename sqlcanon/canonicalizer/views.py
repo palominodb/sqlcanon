@@ -89,6 +89,9 @@ def save_statement_data(request):
             ) = post_vars_packed
 
             dt = timezone.now()
+            
+            LOGGER.debug('dt: {0}, post_vars_packed={1}'.format(dt,
+                post_vars_packed))
 
             is_select_statement = canonicalized_statement.startswith('SELECT ')
             if is_select_statement:
