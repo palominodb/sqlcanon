@@ -978,7 +978,7 @@ def process_packet(pktlen, data, timestamp):
                     # send data to server,
                     # even if --send-server-data is not specified
                     response = url_request(
-                        ARGS.server_url, data=urlencoded_params)
+                        ARGS.submit_url, data=urlencoded_params)
                     handle_explain(response.content)
                 except Exception, e:
                     print 'ERROR: {0}'.format(e)
@@ -987,17 +987,9 @@ def process_packet(pktlen, data, timestamp):
         print 'ERROR: {0}'.format(e)
 
 def run_packet_sniffer(args):
-    if not args.interface:
-        print 'Monitoring interface lo0'
-
-    print 'Sending captured statements to: {0}'.format(args.server_url)
-
-    #if len(sys.argv) < 3:
-    #    print 'usage: {0} <interface> <expr>'.format(sys.argv[0])
-    #    sys.exit()
+    print 'Sending captured statements to: {0}'.format(args.submit_url)
 
     p = pcap.pcapObject()
-    #dev = sys.argv[1]
     dev = args.interface
     net, mask = pcap.lookupnet(dev)
     print 'net:', net, 'mask:', mask
@@ -1011,7 +1003,6 @@ def run_packet_sniffer(args):
     # sample filter:
     #     dst port 3306
     # see: http://www.manpagez.com/man/7/pcap-filter/
-    #p.setfilter(string.join(sys.argv[2:], ' '), 0, 0)
     p.setfilter(args.filter, 0, 0)
 
     print 'Press CTRL+C to end capture'
@@ -1107,7 +1098,7 @@ class SlowQueryLogProcessor(object):
 
         self._args = args
 
-    def _send_data_to_server(self, slow_query_log_item_parser):
+    def _save_data(self, slow_query_log_item_parser):
         """Sends data to server."""
 
         results = canonicalize_statement(slow_query_log_item_parser.statement)
@@ -1127,7 +1118,7 @@ class SlowQueryLogProcessor(object):
             urlencoded_params = urllib.urlencode(params)
             try:
                 response = url_request(
-                    self._args.server_url, data=urlencoded_params)
+                    self._args.submit_url, data=urlencoded_params)
                 handle_explain(response.content)
             except Exception, e:
                 print 'ERROR: {0}'.format(e)
@@ -1137,7 +1128,7 @@ class SlowQueryLogProcessor(object):
 
         last_dt = None
         log_item_parser = None
-        with open(self._args.slow_query_log_file) as f:
+        with open(self._args.file) as f:
             line = f.readline()
             while True:
                 if not line:
@@ -1184,7 +1175,7 @@ class SlowQueryLogProcessor(object):
                     line = log_item_parser.parse_statement(f)
 
                     print 'STATEMENT: {0}'.format(log_item_parser.statement)
-                    self._send_data_to_server(log_item_parser)
+                    self._save_data(log_item_parser)
 
                 else:
                     line = f.readline()
@@ -1200,34 +1191,42 @@ def main():
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--db', help='database name', default = DB)
-    parser.add_argument('--print-db-counts', action='store_true', help='Prints counts stored in DB at the end of execution.')
-
-    action = parser.add_mutually_exclusive_group()
-    action.add_argument('--slow-query-log-file', help='Mysql slow query log file.')
-    action.add_argument('--log-file', help='Mysql query log file to process.')
+    parser.add_argument(
+        'file', nargs='?',
+        help='MySQL log file to open, if not specified stdin will be used.')
+    parser.add_argument(
+        '-t', '--type', choices='sg',
+        help='Log file format -- s: slow query log, g: general query log',
+        default='s',)
 
     parser.add_argument(
-        '--send-server-data',
+        '-s', '--submit',
         action='store_true',
-        help='Send data to server using the URL specified in --server-url.')
+        help='Submit data to server using the URL specified in --submit-url.')
     parser.add_argument(
-        '--server-url',
+        '--submit-url',
         help='URL to be used for sending statement data.',
-        default='http://localhost:8000/save-statement-data/')
+        default='http://localhost:8000/save-statement-data/',)
+
 
     action = parser.add_mutually_exclusive_group()
     action.add_argument(
         '--sniff', action='store_true', default=False,
         help='launch packet sniffer')
     action.add_argument(
-        '--listen', action='store_true',
+        '--file_listen', action='store_true',
         help='Opens up log file and waits for newly written data.')
 
-    parser.add_argument('--interface', help='interface to sniff from', default='lo0')
-    parser.add_argument('--filter', default='dst port 3306', help='pcap-filter')
+    parser.add_argument(
+        '-i', '--interface',
+        help='interface to sniff from', default='lo0')
+    parser.add_argument(
+        '-f', '--filter', help='pcap-filter', default='dst port 3306',)
 
-    parser.add_argument('--listen-window-length', default=5, type=int, help='Length of period of query list filter in number of minutes. (default: 5)')
+    parser.add_argument(
+        '--listen-window-length', type=int,
+        help='Length of period of query list filter in number of minutes.',
+        default=5,)
 
     # this options will be used to execute EXPLAIN statement
     parser.add_argument('--mysql-host', help='mysql host')
@@ -1235,22 +1234,25 @@ def main():
     parser.add_argument('--mysql-user', help='mysql user')
     parser.add_argument('--mysql-password', help='mysql password')
 
-    args = parser.parse_args()
+    parser.add_argument('-d', '--db', help='database name', default=DB)
+    parser.add_argument(
+        '--print-db-counts', action='store_true',
+        help='Prints counts stored in DB at the end of execution.')
+
     global ARGS
-    ARGS = args
+    ARGS = parser.parse_args()
 
-    #print type(args)
-    #print args
-    #print dir(args)
+    is_file_slow_query_log = (ARGS.type == 's')
+    is_file_general_query_log = (ARGS.type == 'g')
 
-    if args.db:
-        DB = args.db
+    if ARGS.db:
+        DB = ARGS.db
     init_db()
 
-    MYSQL_HOST = args.mysql_host
-    MYSQL_DB = args.mysql_db 
-    MYSQL_USER = args.mysql_user
-    MYSQL_PASSWORD = args.mysql_password
+    MYSQL_HOST = ARGS.mysql_host
+    MYSQL_DB = ARGS.mysql_db
+    MYSQL_USER = ARGS.mysql_user
+    MYSQL_PASSWORD = ARGS.mysql_password
 
     if MYSQL_PASSWORD is not None:
         # ask for password if password is not None but is an empty string
@@ -1258,34 +1260,37 @@ def main():
             MYSQL_PASSWORD = getpass.getpass()
 
     try:
-        if args.sniff:
-            run_packet_sniffer(args)
+        if ARGS.sniff:
+            run_packet_sniffer(ARGS)
             sys.exit()
 
-        log_file = args.log_file
-        listen = args.listen
-        listen_window_length = args.listen_window_length
-
-        if args.slow_query_log_file:
-            print 'Processing contents from slow query log file {0}...'.format(args.slow_query_log_file)
-            slow_query_log_processor = SlowQueryLogProcessor(args)
+        if ARGS.file and is_file_slow_query_log:
+            print (
+                'Processing contents from slow query log file {0}...'
+                .format(ARGS.file))
+            slow_query_log_processor = SlowQueryLogProcessor(ARGS)
             slow_query_log_processor.process_log_contents()
 
-        elif log_file and listen:
-            print 'Listening for new data in {0} (window_length={1})...'.format(
-                log_file, listen_window_length
-            )
-            query_log_listen(log_file=log_file, listen_frequency=1,
-                listen_window_length=listen_window_length)
-        elif log_file:
-            print 'Processing contents from log file {0}...'.format(log_file)
-            process_log_file(log_file)
-        else:
+        elif ARGS.file and is_file_general_query_log and ARGS.file_listen:
+            print (
+                ('Listening for new data in general query log file {0} '
+                '(window_length={1})...')
+                .format(ARGS.file, ARGS.listen_window_length))
+            query_log_listen(log_file=ARGS.file, listen_frequency=1,
+                listen_window_length=ARGS.listen_window_length)
+
+        elif ARGS.file and is_file_general_query_log:
+            print (
+                'Processing contents from general query log file {0}...'
+                .format(ARGS.file))
+            process_log_file(ARGS.file)
+
+        elif not ARGS.file and is_file_general_query_log:
             # read from pipe
             print 'Processing data from stdin...'
             process_query_log_from_stdin()
 
-        if args.print_db_counts:
+        if ARGS.print_db_counts:
             print_db_counts()
 
     except Exception, e:
