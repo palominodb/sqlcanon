@@ -10,9 +10,9 @@ from django.utils import timezone, simplejson
 from django.views.decorators.csrf import csrf_exempt
 
 import canonicalizer.funcs as app_funcs
-import canonicalizer.lib.spark as spark
 import canonicalizer.models as app_models
 import canonicalizer.utils as app_utils
+import canonicalizer.spark as spark
 
 LOGGER = logging.getLogger(__name__)
 

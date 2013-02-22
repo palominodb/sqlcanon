@@ -1,12 +1,6 @@
 from django.contrib import admin
-from canonicalizer.models import CanonicalizedStatement
 
 import canonicalizer.models as app_models
-
-
-class CanonicalizedStatementAdmin(admin.ModelAdmin):
-    list_display = ('id', 'statement', 'hostname', 'hash_as_hex_str',
-                    'statement_hostname_hash_as_hex_str', 'instances')
 
 
 class StatementDataAdmin(admin.ModelAdmin):
@@ -18,5 +12,4 @@ class StatementDataAdmin(admin.ModelAdmin):
         'sequence_id', 'last_updated')
 
 
-admin.site.register(CanonicalizedStatement, CanonicalizedStatementAdmin)
 admin.site.register(app_models.StatementData, StatementDataAdmin)
