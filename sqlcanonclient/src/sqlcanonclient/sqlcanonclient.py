@@ -40,6 +40,7 @@ COLLAPSE_TARGET_PARTS = True
 
 HOSTNAME = socket.gethostname()
 
+EXPLAIN_OPTIONS = None
 
 class url_request(object):
     """wrapper for urllib2"""
@@ -914,18 +915,23 @@ def init_db():
             """
         )
 
-def handle_explain(response_content):
+def handle_explain(response_content, db=None):
     try:
         response = json.loads(response_content)
         statements = response.get('explain', [])
-        #print (MYSQL_HOST, MYSQL_DB, MYSQL_USER, MYSQL_PASSWORD)
         if statements:
-            conn = MySQLdb.connect(
-                host=MYSQL_HOST,
-                user=MYSQL_USER,
-                passwd=MYSQL_PASSWORD,
-                db=MYSQL_DB
-            )
+            connect_options = {}
+            if 'h' in EXPLAIN_OPTIONS:
+                connect_options['host'] = EXPLAIN_OPTIONS['h']
+            if 'u' in EXPLAIN_OPTIONS:
+                connect_options['user'] = EXPLAIN_OPTIONS['u']
+            if 'p' in EXPLAIN_OPTIONS and EXPLAIN_OPTIONS['p']:
+                connect_options['passwd'] = EXPLAIN_OPTIONS['p']
+            if db:
+                connect_options['db'] = db
+            print 'connect_options = {0}'.format(connect_options)
+
+            conn = MySQLdb.connect(**connect_options)
             with conn:
                 cur = conn.cursor()
                 for statement in statements:
@@ -1038,8 +1044,8 @@ class SlowQueryLogItemParser(object):
         """Parses time info."""
 
         __, __, date_str, time_str = line.split()
-        self.dt = datetime.strptime(' '.join([date_str, time_str]),
-            '%y%m%d %H:%M:%S')
+        self.dt = datetime.strptime(
+            ' '.join([date_str, time_str]), '%y%m%d %H:%M:%S')
 
     def parse_user_info(self, line):
         """Parses user info."""
@@ -1090,24 +1096,27 @@ class SlowQueryLogItemParser(object):
 class SlowQueryLogProcessor(object):
     """Encapsulates operations on MySQL slow query log file."""
 
-    SLOW_QUERY_LOG_VAR_NAMES = ['query_time', 'lock_time', 'rows_sent',
-                           'rows_examined']
+    SLOW_QUERY_LOG_VAR_NAMES = [
+        'query_time', 'lock_time', 'rows_sent', 'rows_examined']
 
-    def __init__(self, args):
+    def __init__(self):
         super(SlowQueryLogProcessor, self).__init__()
 
-        self._args = args
+        # store last used db when found while processing statements
+        self._last_db_used = None
 
     def _save_data(self, slow_query_log_item_parser):
         """Sends data to server."""
 
-        results = canonicalize_statement(slow_query_log_item_parser.statement)
+        results = canonicalize_statement(
+            slow_query_log_item_parser.statement)
         for statement, __, canonicalized_statement, __ in results:
             params = dict(
                 statement=statement,
                 hostname=HOSTNAME,
                 canonicalized_statement=canonicalized_statement,
-                canonicalized_statement_hash=mmh3.hash(canonicalized_statement),
+                canonicalized_statement_hash=mmh3.hash(
+                    canonicalized_statement),
                 canonicalized_statement_hostname_hash=mmh3.hash(
                     '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
                 query_time=slow_query_log_item_parser.query_time,
@@ -1115,32 +1124,37 @@ class SlowQueryLogProcessor(object):
                 rows_sent=slow_query_log_item_parser.rows_sent,
                 rows_examined=slow_query_log_item_parser.rows_examined
             )
-            urlencoded_params = urllib.urlencode(params)
-            try:
-                response = url_request(
-                    self._args.submit_url, data=urlencoded_params)
-                handle_explain(response.content)
-            except Exception, e:
-                print 'ERROR: {0}'.format(e)
+
+            __ = statement.strip()
+            if __.lower().startswith('use '):
+                self._last_db_used = __[4:].strip('; ')
+                print 'New db selected via: {0}'.format(statement)
+
+            # TODO: save data to local db
+
+            if ARGS.submit:
+                urlencoded_params = urllib.urlencode(params)
+                try:
+                    response = url_request(
+                        ARGS.submit_url, data=urlencoded_params)
+                    handle_explain(response.content, self._last_db_used)
+                except Exception, e:
+                    print 'ERROR: {0}'.format(e)
 
     def process_log_contents(self):
         """Process contents of MySQL slow query log."""
 
         last_dt = None
-        log_item_parser = None
-        with open(self._args.file) as f:
+        with open(ARGS.file) as f:
             line = f.readline()
             while True:
                 if not line:
                     break
 
                 if line.rstrip().endswith('started with:'):
-                    print 'IGNORED: {0}'.format(line)
-                    # ignore the next two lines
+                    # ignore current and the next two lines
                     line = f.readline()
-                    print 'IGNORED: {0}'.format(line)
                     line = f.readline()
-                    print 'IGNORED: {0}'.format(line)
 
                     # this next line is the one that needs processing
                     line = f.readline()
@@ -1228,6 +1242,11 @@ def main():
         help='Length of period of query list filter in number of minutes.',
         default=5,)
 
+    parser.add_argument(
+        '--explain-options',
+        help='Explain MySQL options: h=<host>,u=<user>,p=<passwd>',
+        default='h=127.0.0.1,u=root')
+
     # this options will be used to execute EXPLAIN statement
     parser.add_argument('--mysql-host', help='mysql host')
     parser.add_argument('--mysql-db', help='mysql db')
@@ -1241,6 +1260,20 @@ def main():
 
     global ARGS
     ARGS = parser.parse_args()
+
+    global EXPLAIN_OPTIONS
+    if ARGS.explain_options:
+        # parse explain options
+        EXPLAIN_OPTIONS = dict(
+            [(i[0].strip(), i[2].strip())
+                for i in [word.partition('=')
+                    for word in ARGS.explain_options.split(',')]])
+
+    if 'p' in EXPLAIN_OPTIONS and not EXPLAIN_OPTIONS['p']:
+        EXPLAIN_OPTIONS['p'] = getpass.getpass(
+            'Enter MySQL password for EXPLAIN operations:')
+    else:
+        EXPLAIN_OPTIONS['p'] = None
 
     is_file_slow_query_log = (ARGS.type == 's')
     is_file_general_query_log = (ARGS.type == 'g')
@@ -1268,7 +1301,7 @@ def main():
             print (
                 'Processing contents from slow query log file {0}...'
                 .format(ARGS.file))
-            slow_query_log_processor = SlowQueryLogProcessor(ARGS)
+            slow_query_log_processor = SlowQueryLogProcessor()
             slow_query_log_processor.process_log_contents()
 
         elif ARGS.file and is_file_general_query_log and ARGS.file_listen:
