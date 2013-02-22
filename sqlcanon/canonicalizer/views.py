@@ -123,28 +123,33 @@ def last_statements(request, window_length,
             app_models.StatementData.objects
             .filter(dt__gte=dt_start, dt__lte=dt)
             .values(
-                'statement',
-                'hostname',
                 'canonicalized_statement',
+                'hostname',
+                'canonicalized_statement_hostname_hash',
                 'canonicalized_statement_hash',
-                'canonicalized_statement_hostname_hash')
+                'statement')
             .annotate(Max('dt'), Count('dt')).order_by('dt__max'))
 
         # calculate counts
         counts = {}
         for statement_data in statement_data_qs:
-            hash = statement_data['canonicalized_statement_hostname_hash']
-            if hash in counts:
-                counts[hash] += statement_data['dt__count']
+            canonicalized_statement_hostname_hash = statement_data[
+                'canonicalized_statement_hostname_hash']
+            if canonicalized_statement_hostname_hash in counts:
+                counts[canonicalized_statement_hostname_hash] += (
+                    statement_data['dt__count'])
             else:
-                counts[hash] = statement_data['dt__count']
+                counts[canonicalized_statement_hostname_hash] = (
+                    statement_data['dt__count'])
 
         statements = []
         for statement_data in statement_data_qs:
-            hash = statement_data['canonicalized_statement_hostname_hash']
-            count = counts.get(hash, 1)
+            canonicalized_statement_hostname_hash = statement_data[
+                'canonicalized_statement_hostname_hash']
+            count = counts.get(canonicalized_statement_hostname_hash, 1)
             sparkline_data_session_key = 'sparkline_data.{0}'.format(
-                app_utils.int_to_hex_str(hash))
+                app_utils.int_to_hex_str(
+                    canonicalized_statement_hostname_hash))
             sparkline_data = request.session.get(
                 sparkline_data_session_key, [])
             if sparkline_data:
@@ -161,7 +166,7 @@ def last_statements(request, window_length,
             statements.append([
                 statement_data,
                 count,
-                app_utils.int_to_hex_str(hash),
+                app_utils.int_to_hex_str(canonicalized_statement_hostname_hash),
                 ','.join([str(i) for i in sparkline_data])
             ])
             request.session[sparkline_data_session_key] = sparkline_data
