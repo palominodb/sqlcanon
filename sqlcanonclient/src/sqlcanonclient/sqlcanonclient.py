@@ -595,17 +595,6 @@ def canonicalize_statement(statement):
             values))
     return result
 
-def process_log_file(log_file):
-    """
-    Processes contents of log file (mysql general log file format).
-    """
-    f = open(log_file)
-    try:
-        process_query_log(f)
-    except Exception, e:
-        raise
-    finally:
-        f.close()
 
 def db_increment_canonicalized_query_count_from_results(results):
     """
@@ -617,92 +606,9 @@ def db_increment_canonicalized_query_count_from_results(results):
         print 'Query: {0}'.format(query)
         db_increment_canonicalized_statement_count(canonicalized_query)
 
-def process_query_log(source,
-                      canonicalize_sql_results_processor=db_increment_canonicalized_query_count_from_results):
-    """
-    Processes queries from source.
-
-    source
-        either file or stdin
-    """
-
-    try:
-        line = ''
-        lines_to_parse = ''
-        parse_now = False
-        exit_loop = False
-
-        while True:
-            try:
-                if parse_now:
-                    # search for query embedded in lines
-                    pat = QUERY_LOG_PATTERN_FULL_QUERY
-                    match = re.search(pat, lines_to_parse)
-                    if match:
-                        query = match.group('query')
-                        canonicalize_sql_results = canonicalize_statement(query)
-                        canonicalize_sql_results_processor(
-                            canonicalize_sql_results)
-                        lines_to_parse = ''
-                    else:
-                        #print 'Could not parse the following: {0}'.format(lines_to_parse)
-                        pass
-
-                    lines_to_parse = line if line else ''
-                    if lines_to_parse:
-                        # check if we can parse the recent line
-                        match = re.search(pat, lines_to_parse)
-                        if match:
-                            query = match.group('query')
-                            canonicalize_sql_results = canonicalize_statement(query)
-                            canonicalize_sql_results_processor(
-                                canonicalize_sql_results)
-                            lines_to_parse = ''
-
-                    parse_now = False
-
-                    if exit_loop:
-                        break
-
-                line = source.readline()
-                if not line:
-                    # end of file, parse lines not yet parsed if present before exiting loop
-                    if lines_to_parse:
-                        parse_now = True
-                        exit_loop = True
-                        continue
-                    break
-                else:
-                    # check if this line has the start of a query
-                    pat = QUERY_LOG_PATTERN_QUERY_START
-                    match = re.search(pat, line)
-                    if match:
-                        # found match, do we have lines that were not yet parsed?
-                        # if yes, parse them now,
-                        # then set lines_to_parse = line
-                        parse_now = True
-                        continue
-                    else:
-                        lines_to_parse += line
-            except (KeyboardInterrupt, SystemExit):
-                if lines_to_parse:
-                    parse_now = True
-                    exit_loop = True
-                    continue
-                break
-    except Exception, e:
-        print 'Exception in process_query_log: {0}'.format(e)
-        raise
-
-def process_query_log_from_stdin(
-        canonicalize_sql_results_processor=db_increment_canonicalized_query_count_from_results):
-    """
-    Processes queries coming from stdin.
-    """
-
-    process_query_log(stdin)
 
 QUERY_LISTER = QueryLister()
+
 
 def append_statements_to_query_lister(results):
     """
@@ -1064,17 +970,19 @@ class SlowQueryLogItemParser(object):
     def __init__(self):
         super(SlowQueryLogItemParser, self).__init__()
 
-        self.line_time_info = None
-        self.line_user_info = None
-        self.line_variables = None
-        self.line_statement = None
-
         self.dt = None
         self.query_time = None
         self.lock_time = None
         self.rows_sent = None
         self.rows_examined = None
         self.statement = None
+
+        self.line_time_info = None
+        self.line_user_info = None
+        self.line_variables = None
+        self.line_statement = None
+
+
 
     def parse_time_info(self, line):
         """Parses time info."""
@@ -1130,10 +1038,7 @@ class SlowQueryLogItemParser(object):
 
 
 class SlowQueryLogProcessor(object):
-    """Encapsulates operations on MySQL slow query log file."""
-
-    SLOW_QUERY_LOG_VAR_NAMES = [
-        'query_time', 'lock_time', 'rows_sent', 'rows_examined']
+    """Encapsulates operations on MySQL slow query log."""
 
     def __init__(self):
         super(SlowQueryLogProcessor, self).__init__()
@@ -1381,12 +1286,17 @@ class ServerData:
             canonicalized_statement=canonicalized_statement,
             canonicalized_statement_hash=canonicalized_statement_hash,
             canonicalized_statement_hostname_hash=
-            canonicalized_statement_hostname_hash,
-            query_time=query_time,
-            lock_time=lock_time,
-            rows_sent=rows_sent,
-            rows_examined=rows_examined
+                canonicalized_statement_hostname_hash
         )
+        if query_time:
+            params['query_time'] = query_time
+        if lock_time:
+            params['lock_time'] = lock_time
+        if rows_sent:
+            params['rows_sent'] = rows_sent
+        if rows_examined:
+            params['rows_examined'] = rows_examined
+
         urlencoded_params = urllib.urlencode(params)
         try:
             response = url_request(
@@ -1491,6 +1401,7 @@ class DataManager:
     @staticmethod
     def run_explain(statement, cursor):
         sql = 'EXPLAIN {0}'.format(statement)
+        print 'Running:', sql
         cursor.execute(sql)
         fetched_rows = cursor.fetchall()
         explain_rows = []
@@ -1510,6 +1421,127 @@ class DataManager:
         return explain_rows
 
 
+class GeneralQueryLogItemParser(object):
+    """General query log item parser."""
+
+    QUERY_LOG_PATTERN_FULL_QUERY = (
+        r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)'
+        r'(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))')
+
+    def __init__(self):
+        super(GeneralQueryLogItemParser, self).__init__()
+
+        self.dt = None
+        self.query_time = None
+        self.lock_time = None
+        self.rows_sent = None
+        self.rows_examined = None
+        self.statement = None
+
+        self._full_query_pattern = re.compile(
+            GeneralQueryLogItemParser.QUERY_LOG_PATTERN_FULL_QUERY)
+
+    def parse_statement(self, lines_to_parse):
+        # search for query embedded in lines
+        match = self._full_query_pattern.match(lines_to_parse)
+        if match:
+            self.statement = match.group('query')
+        else:
+            self.statement = None
+        return self.statement
+
+
+class GeneralQueryLogProcessor(object):
+    """Encapsulates operations on MySQL general query log."""
+
+    QUERY_LOG_PATTERN_QUERY_START = (
+        r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+')
+
+    def __init__(self):
+        super(GeneralQueryLogProcessor, self).__init__()
+        self._query_start_pattern = re.compile(
+            GeneralQueryLogProcessor.QUERY_LOG_PATTERN_QUERY_START)
+
+    def save_data(self, log_item_parser):
+        results = canonicalize_statement(log_item_parser.statement)
+        for (statement, normalized_statement, canonicalized_statement,
+             __) in results:
+            if normalized_statement.lower().startswith('use '):
+                DataManager.set_last_db_used(
+                    normalized_statement[4:].strip('; '))
+
+            DataManager.save_statement_data(
+                log_item_parser.dt,
+                statement,
+                HOSTNAME,
+                canonicalized_statement,
+                mmh3.hash(canonicalized_statement),
+                mmh3.hash(
+                    '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
+                log_item_parser.query_time,
+                log_item_parser.lock_time,
+                log_item_parser.rows_sent,
+                log_item_parser.rows_examined)
+
+    def process_log_contents(self, source):
+        """Process contents of MySQL general query log."""
+        line = ''
+        lines_to_parse = ''
+        parse_now = False
+        exit_loop = False
+
+        while True:
+            try:
+                if parse_now:
+                    log_item_parser = GeneralQueryLogItemParser()
+                    if log_item_parser.parse_statement(lines_to_parse):
+                        print log_item_parser.statement
+                        self.save_data(log_item_parser)
+                        lines_to_parse = ''
+                    else:
+                        # could not parse current line(s)
+                        pass
+
+                    lines_to_parse = line if line else ''
+                    if lines_to_parse:
+                        # check if we can parse the recent line
+                        if log_item_parser.parse_statement(lines_to_parse):
+                            print log_item_parser.statement
+                            self.save_data(log_item_parser)
+                            lines_to_parse = ''
+
+                    parse_now = False
+
+                    if exit_loop:
+                        break
+
+                line = source.readline()
+                if not line:
+                    # end of file, parse lines not yet parsed if present
+                    # before exiting loop
+                    if lines_to_parse:
+                        parse_now = True
+                        exit_loop = True
+                        continue
+                    break
+                else:
+                    # check if this line has the start of a query
+                    match = self._query_start_pattern.match(line)
+                    if match:
+                        # found match, do we have lines that were not
+                        # yet parsed?
+                        # if yes, parse them now,
+                        # then set lines_to_parse = line
+                        parse_now = True
+                        continue
+                    else:
+                        lines_to_parse += line
+            except (KeyboardInterrupt, SystemExit):
+                if lines_to_parse:
+                    parse_now = True
+                    exit_loop = True
+                    continue
+                break
 
 
 def main():
@@ -1632,27 +1664,31 @@ def main():
 
         elif is_file_slow_query_log and not ARGS.file:
             print 'Reading MySQL slow query log from stdin...'
-            slow_query_log_processor = SlowQueryLogProcessor()
-            slow_query_log_processor.process_log_contents(stdin)
+            query_log_processor = SlowQueryLogProcessor()
+            query_log_processor.process_log_contents(stdin)
 
-        elif ARGS.file and is_file_general_query_log and ARGS.file_listen:
+        elif is_file_general_query_log and ARGS.file:
             print (
-                ('Listening for new data in general query log file {0} '
-                '(window_length={1})...')
-                .format(ARGS.file, ARGS.listen_window_length))
-            query_log_listen(log_file=ARGS.file, listen_frequency=1,
-                listen_window_length=ARGS.listen_window_length)
-
-        elif ARGS.file and is_file_general_query_log:
-            print (
-                'Processing contents from general query log file {0}...'
+                'MySQL general query log file = {0}'
                 .format(ARGS.file))
-            process_log_file(ARGS.file)
+            query_log_processor = GeneralQueryLogProcessor()
+            with open(ARGS.file) as f:
+                query_log_processor.process_log_contents(f)
 
-        elif not ARGS.file and is_file_general_query_log:
-            # read from pipe
-            print 'Processing data from stdin...'
-            process_query_log_from_stdin()
+        elif is_file_general_query_log and not ARGS.file :
+            # read from stdin
+            print 'Reading MySQL general query log from stdin...'
+            query_log_processor = GeneralQueryLogProcessor()
+            query_log_processor.process_log_contents(stdin)
+
+        #elif ARGS.file and is_file_general_query_log and ARGS.file_listen:
+        #    print (
+        #        ('Listening for new data in general query log file {0} '
+        #        '(window_length={1})...')
+        #        .format(ARGS.file, ARGS.listen_window_length))
+        #    query_log_listen(log_file=ARGS.file, listen_frequency=1,
+        #        listen_window_length=ARGS.listen_window_length)
+
 
         if ARGS.print_db_counts:
             print_db_counts()
