@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
-from datetime import datetime, timedelta
+import datetime
 import getpass
 import itertools
 import json
@@ -24,6 +24,8 @@ import MySQLdb
 import sqlite3
 import sqlparse
 from sqlparse.tokens import Token
+
+STATEMENT_DATA_MAX_ROWS = 1024
 
 PP = pprint.PrettyPrinter(indent=4)
 
@@ -97,7 +99,7 @@ class QueryLister:
         """
 
         if not dt:
-            dt = datetime.now()
+            dt = datetime.datetime.now()
 
         # order of items on list is expected to be ordered by datetime in ascending order
         # do not allow violation of this rule
@@ -716,9 +718,9 @@ def append_statements_to_query_lister(results):
             canonicalized_statement=canonicalized_statement)
 
 def print_statements(listen_window_length):
-    dt_now = datetime.now()
+    dt_now = datetime.datetime.now()
     result = QUERY_LISTER.get_list(
-        dt_now - timedelta(minutes=listen_window_length),
+        dt_now - datetime.timedelta(minutes=listen_window_length),
         dt_now)
     print
     print '#### Queries found in the last {0} minutes:'.format(listen_window_length)
@@ -991,7 +993,7 @@ def process_packet(pktlen, data, timestamp):
     if not data:
         return
 
-    print 'pktlen:', pktlen, 'dt:', datetime.fromtimestamp(timestamp)
+    print 'pktlen:', pktlen, 'dt:', datetime.datetime.fromtimestamp(timestamp)
     stack = ip_stack.parse(data)
     payload = stack.next.next.next
     print payload
@@ -1078,7 +1080,7 @@ class SlowQueryLogItemParser(object):
         """Parses time info."""
 
         __, __, date_str, time_str = line.split()
-        self.dt = datetime.strptime(
+        self.dt = datetime.datetime.strptime(
             ' '.join([date_str, time_str]), '%y%m%d %H:%M:%S')
 
     def parse_user_info(self, line):
@@ -1136,102 +1138,382 @@ class SlowQueryLogProcessor(object):
     def __init__(self):
         super(SlowQueryLogProcessor, self).__init__()
 
-        # store last used db when found while processing statements
-        self._last_db_used = None
 
-    def _save_data(self, slow_query_log_item_parser):
-        """Sends data to server."""
+    def save_data(self, log_item_parser):
+        results = canonicalize_statement(log_item_parser.statement)
+        for (statement, normalized_statement, canonicalized_statement,
+                __) in results:
+            if normalized_statement.lower().startswith('use '):
+                DataManager.set_last_db_used(
+                    normalized_statement[4:].strip('; '))
 
-        results = canonicalize_statement(
-            slow_query_log_item_parser.statement)
-        for statement, __, canonicalized_statement, __ in results:
-            params = dict(
-                statement=statement,
-                hostname=HOSTNAME,
-                canonicalized_statement=canonicalized_statement,
-                canonicalized_statement_hash=mmh3.hash(
-                    canonicalized_statement),
-                canonicalized_statement_hostname_hash=mmh3.hash(
+            DataManager.save_statement_data(
+                log_item_parser.dt,
+                statement,
+                HOSTNAME,
+                canonicalized_statement,
+                mmh3.hash(canonicalized_statement),
+                mmh3.hash(
                     '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
-                query_time=slow_query_log_item_parser.query_time,
-                lock_time=slow_query_log_item_parser.lock_time,
-                rows_sent=slow_query_log_item_parser.rows_sent,
-                rows_examined=slow_query_log_item_parser.rows_examined
-            )
+                log_item_parser.query_time,
+                log_item_parser.lock_time,
+                log_item_parser.rows_sent,
+                log_item_parser.rows_examined)
 
-            __ = statement.strip()
-            if __.lower().startswith('use '):
-                self._last_db_used = __[4:].strip('; ')
-                print 'New db selected via: {0}'.format(statement)
-
-            # TODO: save data to local db
-
-            if ARGS.submit:
-                urlencoded_params = urllib.urlencode(params)
-                try:
-                    response = url_request(
-                        ARGS.submit_url, data=urlencoded_params)
-                    handle_explain(response.content, self._last_db_used)
-                except Exception, e:
-                    print 'ERROR: {0}'.format(e)
-
-    def process_log_contents(self):
+    def process_log_contents(self, source):
         """Process contents of MySQL slow query log."""
 
         last_dt = None
-        with open(ARGS.file) as f:
-            line = f.readline()
-            while True:
-                if not line:
-                    break
+        line = source.readline()
+        while True:
+            if not line:
+                break
 
-                if line.rstrip().endswith('started with:'):
-                    # ignore current and the next two lines
-                    line = f.readline()
-                    line = f.readline()
+            if line.rstrip().endswith('started with:'):
+                # ignore current and the next two lines
+                line = source.readline()
+                line = source.readline()
 
-                    # this next line is the one that needs processing
-                    line = f.readline()
+                # this next line is the one that needs processing
+                line = source.readline()
 
-                    # loop again so we could recheck lines to ignore
-                    continue
+                # loop again so we could recheck lines to ignore
+                continue
 
-                if line.startswith('# '):
-                    log_item_parser = SlowQueryLogItemParser()
-                    if line.startswith('# Time'):
-                        log_item_parser.parse_time_info(line)
-                        last_dt = log_item_parser.dt
+            if line.startswith('# '):
+                log_item_parser = SlowQueryLogItemParser()
+                if line.startswith('# Time'):
+                    log_item_parser.parse_time_info(line)
+                    last_dt = log_item_parser.dt
 
-                        print 'Date/Time:', log_item_parser.dt
+                    print 'Date/Time:', log_item_parser.dt
 
-                        # read user info
-                        line = f.readline()
-                    else:
-                        # no time info, this line contains user info
-                        pass
-                    log_item_parser.parse_user_info(line)
-
-                    # read variables info
-                    log_item_parser.parse_variables(f.readline())
-
-                    for var_name in (
-                            SlowQueryLogProcessor.SLOW_QUERY_LOG_VAR_NAMES):
-                        print '{0}:'.format(var_name), getattr(
-                            log_item_parser, var_name, None)
-
-                    # read statement
-                    line = log_item_parser.parse_statement(f)
-
-                    print 'STATEMENT: {0}'.format(log_item_parser.statement)
-                    self._save_data(log_item_parser)
-
+                    # read user info
+                    line = source.readline()
                 else:
-                    line = f.readline()
+                    # no time info, this line contains user info
+                    pass
+                log_item_parser.parse_user_info(line)
+
+                # read variables info
+                log_item_parser.parse_variables(source.readline())
+
+                print '{0}: {1},'.format(
+                    'Query time', log_item_parser.query_time),
+                print '{0}: {1},'.format(
+                    'Lock time', log_item_parser.lock_time),
+                print '{0}: {1},'.format(
+                    'Rows sent', log_item_parser.rows_sent),
+                print '{0}: {1},'.format(
+                    'Rows examined', log_item_parser.rows_examined)
+
+                # read statement
+                line = log_item_parser.parse_statement(source)
+
+                print log_item_parser.statement
+
+                self.save_data(log_item_parser)
+            else:
+                line = source.readline()
+
+
+class LocalData:
+    """Encapsulates local data operations."""
+
+    DB = None
+
+    @staticmethod
+    def init_db(db):
+        LocalData.DB = db
+
+        conn = sqlite3.connect(db)
+        with conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS statementdata(
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    dt TEXT,
+                    statement TEXT,
+                    hostname TEXT,
+                    canonicalized_statement TEXT,
+                    canonicalized_statement_hash INT,
+                    canonicalized_statement_hostname_hash INT,
+                    query_time REAL,
+                    lock_time REAL,
+                    rows_sent INT,
+                    rows_examined INT,
+                    sequence_id INT,
+                    last_updated TEXT
+                )
+                """)
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS explainedstatement(
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    dt TEXT,
+                    statement TEXT,
+                    hostname TEXT,
+                    canonicalized_statement TEXT,
+                    canonicalized_statement_hash INT,
+                    canonicalized_statement_hostname_hash INT,
+                    db TEXT
+                )
+                """)
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS explainresult(
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    select_id INT,
+                    select_type TEXT,
+                    table TEXT,
+                    type TEXT,
+                    possible_keys TEXT,
+                    key TEXT,
+                    key_len INT,
+                    ref TEXT,
+                    rows INT,
+                    extra TEXT
+                )
+                """)
+            cur.close()
+
+    @staticmethod
+    def save_statement_data(
+            dt, statement, hostname,
+            canonicalized_statement, canonicalized_statement_hash,
+            canonicalized_statement_hostname_hash,
+            query_time=None, lock_time=None,
+            rows_sent=None, rows_examined=None):
+        """Saves statement data.
+
+        Statement data are stored as RRD.
+        """
+
+        conn = sqlite3.connect(LocalData.DB)
+        with conn:
+            cur = conn.cursor()
+            insert_sql = (
+                """
+                INSERT INTO statementdata(
+                    dt, statement, hostname,
+                    canonicalized_statement,
+                    canonicalized_statement_hash,
+                    canonicalized_statement_hostname_hash,
+                    query_time, lock_time, rows_sent, rows_examined,
+                    sequence_id, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """)
+            update_sql = (
+                """
+                UPDATE statementdata
+                SET
+                    dt = ?,
+                    statement = ?,
+                    hostname = ?,
+                    canonicalized_statement = ?,
+                    canonicalized_statement_hash = ?,
+                    canonicalized_statement_hostname_hash = ?,
+                    query_time = ?,
+                    lock_time = ?,
+                    rows_sent = ?,
+                    rows_examined = ?,
+                    last_updated =?
+                WHERE sequence_id = ?
+                """)
+
+            # calculate the next sequence id to use
+            cur.execute(
+                """
+                SELECT sequence_id FROM statementdata
+                ORDER BY last_updated DESC
+                """)
+            row = cur.fetchone()
+            if row:
+                sequence_id = (
+                    (row[0] + 1) % STATEMENT_DATA_MAX_ROWS)
+            else:
+                sequence_id = 1
+
+            cur.execute(
+                """
+                SELECT COUNT(*) FROM statementdata WHERE sequence_id = ?
+                """, (sequence_id, ))
+            row = cur.fetchone()
+            last_updated = datetime.datetime.now()
+            if row and int(row[0]):
+                cur.execute(
+                    update_sql,
+                    (
+                        dt, statement, hostname,
+                        canonicalized_statement,
+                        canonicalized_statement_hash,
+                        canonicalized_statement_hostname_hash,
+                        query_time, lock_time, rows_sent, rows_examined,
+                        last_updated, sequence_id))
+            else:
+                cur.execute(
+                    insert_sql,
+                    (
+                        dt, statement, hostname,
+                        canonicalized_statement,
+                        canonicalized_statement_hash,
+                        canonicalized_statement_hostname_hash,
+                        query_time, lock_time,
+                        rows_sent, rows_examined,
+                        sequence_id, last_updated))
+            cur.close()
+
+
+class ServerData:
+    """Encapsulates server submissions."""
+
+    @staticmethod
+    def save_statement_data(
+            statement, hostname,
+            canonicalized_statement, canonicalized_statement_hash,
+            canonicalized_statement_hostname_hash,
+            query_time=None, lock_time=None,
+            rows_sent=None, rows_examined=None):
+        params = dict(
+            statement=statement,
+            hostname=hostname,
+            canonicalized_statement=canonicalized_statement,
+            canonicalized_statement_hash=canonicalized_statement_hash,
+            canonicalized_statement_hostname_hash=
+            canonicalized_statement_hostname_hash,
+            query_time=query_time,
+            lock_time=lock_time,
+            rows_sent=rows_sent,
+            rows_examined=rows_examined
+        )
+        urlencoded_params = urllib.urlencode(params)
+        try:
+            response = url_request(
+                ARGS.server_base_url + ARGS.save_statement_data_path,
+                data=urlencoded_params)
+            return response
+        except Exception, e:
+            return None
+
+    @staticmethod
+    def save_explained_statement(
+            statement_data_id, explain_rows, db=None):
+        params = dict(
+            statement_data_id=statement_data_id,
+            explain_rows=json.dumps(explain_rows),
+        )
+        if db:
+            params['db'] = db
+        urlencoded_params = urllib.urlencode(params)
+        try:
+            response = url_request(
+                ARGS.server_base_url + ARGS.save_explained_statement_path,
+                data=urlencoded_params)
+            return response
+        except Exception, e:
+            return None
+
+    @staticmethod
+    def process_explain_requests(save_statement_data_response_content):
+        response = json.loads(save_statement_data_response_content)
+        explain_items = response.get('explain', [])
+        if explain_items:
+            conn = MySQLdb.connect(
+                **DataManager.get_explain_connection_options())
+            with conn:
+                cur = conn.cursor()
+                for explain_item in explain_items:
+                    statement = explain_item['statement']
+                    statement_data_id = explain_item['statement_data_id']
+
+                    try:
+                        explain_rows = DataManager.run_explain(
+                            statement, cur)
+
+                        ServerData.save_explained_statement(
+                            statement_data_id,
+                            explain_rows,
+                            DataManager._last_db_used)
+
+                    except Exception, e:
+                        print ((
+                            'ServerData.process_explain_requests() > '
+                            'error while running EXPLAIN: {0}')
+                            .format(e))
+
+
+class DataManager:
+    _last_db_used = None
+
+    @staticmethod
+    def set_last_db_used(last_db_used):
+        DataManager._last_db_used = last_db_used
+
+    @staticmethod
+    def save_statement_data(
+        dt, statement, hostname,
+        canonicalized_statement, canonicalized_statement_hash,
+        canonicalized_statement_hostname_hash,
+        query_time=None, lock_time=None,
+        rows_sent=None, rows_examined=None):
+
+        if ARGS.stand_alone:
+            LocalData.save_statement_data(
+                dt, statement, hostname,
+                canonicalized_statement, canonicalized_statement_hash,
+                canonicalized_statement_hostname_hash,
+                query_time, lock_time,
+                rows_sent, rows_examined)
+        else:
+            response = ServerData.save_statement_data(
+                statement, hostname,
+                canonicalized_statement, canonicalized_statement_hash,
+                canonicalized_statement_hostname_hash,
+                query_time, lock_time,
+                rows_sent, rows_examined)
+            if response:
+                ServerData.process_explain_requests(response.content)
+
+    @staticmethod
+    def get_explain_connection_options():
+        connection_options = {}
+        if 'h' in EXPLAIN_OPTIONS:
+            connection_options['host'] = EXPLAIN_OPTIONS['h']
+        if 'u' in EXPLAIN_OPTIONS:
+            connection_options['user'] = EXPLAIN_OPTIONS['u']
+        if 'p' in EXPLAIN_OPTIONS and EXPLAIN_OPTIONS['p']:
+            connection_options['passwd'] = EXPLAIN_OPTIONS['p']
+        if DataManager._last_db_used:
+            connection_options['db'] = DataManager._last_db_used
+        return connection_options
+
+    @staticmethod
+    def run_explain(statement, cursor):
+        sql = 'EXPLAIN {0}'.format(statement)
+        cursor.execute(sql)
+        fetched_rows = cursor.fetchall()
+        explain_rows = []
+        columns = [
+            'select_id',
+            'select_type',
+            'table',
+            'type',
+            'possible_keys',
+            'key',
+            'key_len',
+            'ref',
+            'rows',
+            'extra']
+        for fetched_row in fetched_rows:
+            explain_rows.append(dict(zip(columns, fetched_row)))
+        return explain_rows
+
+
 
 
 def main():
-    global DB
-    DB = '%s/sqlcanonclient.db' % tempfile.gettempdir()
+    default_db = '%s/sqlcanonclient.db' % tempfile.gettempdir()
 
     global MYSQL_HOST, MYSQL_DB, MYSQL_USER, MYSQL_PASSWORD
     MYSQL_HOST = '127.0.0.1'
@@ -1248,17 +1530,28 @@ def main():
         default='s',)
 
     parser.add_argument(
-        '-s', '--submit',
+        '-d', '--db', help='database name', default=default_db)
+
+    parser.add_argument(
+        '-s', '--stand-alone',
         action='store_true',
-        help='Submit data to server using the URL specified in --submit-url.')
+        help='Run as stand alone (will not send data to server).')
     parser.add_argument(
-        '--submit-url',
-        help='URL to be used for sending statement data.',
-        default='http://localhost:8000/save-statement-data/',)
+        '--server-base-url',
+        help='Server base URL.',
+        default='http://localhost:8000')
     parser.add_argument(
-        '--save-explained-statement-url', '--sesu',
-        help='URL to be used for saving explain results.',
-        default='http://localhost:8000/save-explained-statement/',)
+        '--save-statement-data-path',
+        help='URL to be used for saving statement data.',
+        default='/save-statement-data/',)
+    parser.add_argument(
+        '--save-explained-statement-path',
+        help='URL to be used for saving explain statement.',
+        default='/save-explained-statement/',)
+    parser.add_argument(
+        '-e', '--explain-options',
+        help='Explain MySQL options: h=<host>,u=<user>,p=<passwd>',
+        default='h=127.0.0.1,u=root')
 
 
     action = parser.add_mutually_exclusive_group()
@@ -1280,18 +1573,12 @@ def main():
         help='Length of period of query list filter in number of minutes.',
         default=5,)
 
-    parser.add_argument(
-        '--explain-options',
-        help='Explain MySQL options: h=<host>,u=<user>,p=<passwd>',
-        default='h=127.0.0.1,u=root')
-
     # this options will be used to execute EXPLAIN statement
     parser.add_argument('--mysql-host', help='mysql host')
     parser.add_argument('--mysql-db', help='mysql db')
     parser.add_argument('--mysql-user', help='mysql user')
     parser.add_argument('--mysql-password', help='mysql password')
 
-    parser.add_argument('-d', '--db', help='database name', default=DB)
     parser.add_argument(
         '--print-db-counts', action='store_true',
         help='Prints counts stored in DB at the end of execution.')
@@ -1299,14 +1586,18 @@ def main():
     global ARGS
     ARGS = parser.parse_args()
 
+    if ARGS.stand_alone:
+        LocalData.init_db(ARGS.db)
+
+    DataManager.set_last_db_used(None)
+
+    # parse explain options
     global EXPLAIN_OPTIONS
     if ARGS.explain_options:
-        # parse explain options
         EXPLAIN_OPTIONS = dict(
             [(i[0].strip(), i[2].strip())
                 for i in [word.partition('=')
                     for word in ARGS.explain_options.split(',')]])
-
     if 'p' in EXPLAIN_OPTIONS and not EXPLAIN_OPTIONS['p']:
         EXPLAIN_OPTIONS['p'] = getpass.getpass(
             'Enter MySQL password for EXPLAIN operations:')
@@ -1315,10 +1606,6 @@ def main():
 
     is_file_slow_query_log = (ARGS.type == 's')
     is_file_general_query_log = (ARGS.type == 'g')
-
-    if ARGS.db:
-        DB = ARGS.db
-    init_db()
 
     MYSQL_HOST = ARGS.mysql_host
     MYSQL_DB = ARGS.mysql_db
@@ -1335,12 +1622,18 @@ def main():
             run_packet_sniffer(ARGS)
             sys.exit()
 
-        if ARGS.file and is_file_slow_query_log:
+        if is_file_slow_query_log and ARGS.file:
             print (
-                'Processing contents from slow query log file {0}...'
+                'MySQL slow query log file = {0}'
                 .format(ARGS.file))
             slow_query_log_processor = SlowQueryLogProcessor()
-            slow_query_log_processor.process_log_contents()
+            with open(ARGS.file) as f:
+                slow_query_log_processor.process_log_contents(f)
+
+        elif is_file_slow_query_log and not ARGS.file:
+            print 'Reading MySQL slow query log from stdin...'
+            slow_query_log_processor = SlowQueryLogProcessor()
+            slow_query_log_processor.process_log_contents(stdin)
 
         elif ARGS.file and is_file_general_query_log and ARGS.file_listen:
             print (

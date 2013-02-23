@@ -17,8 +17,8 @@ class StatementData(models.Model):
 
     query_time = models.FloatField(blank=True, null=True, default=None)
     lock_time = models.FloatField(blank=True, null=True, default=None)
-    rows_sent = models.FloatField(blank=True, null=True, default=None)
-    rows_examined = models.FloatField(blank=True, null=True, default=None)
+    rows_sent = models.IntegerField(blank=True, null=True, default=None)
+    rows_examined = models.IntegerField(blank=True, null=True, default=None)
     sequence_id = models.IntegerField(unique=True)
     last_updated = models.DateTimeField(
         db_index=True, auto_now_add=True, auto_now=True)
