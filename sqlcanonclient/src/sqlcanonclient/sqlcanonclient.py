@@ -9,11 +9,11 @@ import pprint
 import os
 import re
 import socket
-import string
 import sys
 from sys import stdin
 import tempfile
 import time
+import traceback
 import urllib
 import urllib2
 
@@ -640,86 +640,6 @@ def print_statements(listen_window_length):
     else:
         print '(None)'
 
-def query_log_listen(log_file, listen_frequency, listen_window_length,
-                     canonicalize_sql_results_processor=append_statements_to_query_lister):
-    """
-    Listens for incoming queries from a mysql query log file display stats.
-    """
-
-    file = open(log_file)
-
-    # Find the size of the file and move to the end
-    st_results = os.stat(log_file)
-    st_size = st_results[6]
-    file.seek(st_size)
-
-    try:
-        line = ''
-        lines_to_parse = ''
-        parse_now = False
-        exit_loop = False
-
-        while True:
-            try:
-                if parse_now:
-                    # search for query embedded in lines
-                    pat = QUERY_LOG_PATTERN_FULL_QUERY
-                    match = re.search(pat, lines_to_parse)
-                    if match:
-                        query = match.group('query')
-                        canonicalize_sql_results = canonicalize_statement(query)
-                        canonicalize_sql_results_processor(
-                            canonicalize_sql_results)
-                        lines_to_parse = ''
-                    else:
-                        #print 'Could not parse the following: {0}'.format(lines_to_parse)
-                        pass
-
-                    lines_to_parse = line if line else ''
-                    if lines_to_parse:
-                        # check if we can parse the recent line
-                        match = re.search(pat, lines_to_parse)
-                        if match:
-                            query = match.group('query')
-                            canonicalize_sql_results = canonicalize_statement(query)
-                            canonicalize_sql_results_processor(
-                                canonicalize_sql_results)
-                            lines_to_parse = ''
-
-                    parse_now = False
-
-                    if exit_loop:
-                        break
-
-                where = file.tell()
-                line = file.readline()
-                if not line:
-                    print_statements(listen_window_length)
-                    time.sleep(listen_frequency)
-                    file.seek(where)
-                else:
-                    # check if this line has the start of a query
-                    pat = QUERY_LOG_PATTERN_QUERY_START
-                    match = re.search(pat, line)
-                    if match:
-                        # found match, do we have lines that were not yet parsed?
-                        # if yes, parse them now,
-                        # then set lines_to_parse = line
-                        parse_now = True
-                        continue
-                    else:
-                        lines_to_parse += line
-            except (KeyboardInterrupt, SystemExit):
-                if lines_to_parse:
-                    parse_now = True
-                    exit_loop = True
-                    continue
-                break
-    except Exception, e:
-        print 'Exception in query_log_listen: {0}'.format(e)
-        raise
-    finally:
-        file.close()
 
 def db_increment_canonicalized_statement_count(canonicalized_statement,
                                                canonicalized_statement_hash=None,
@@ -806,94 +726,6 @@ def print_db_counts():
     #        statement.statement
     #    )
 
-def init_db():
-    """
-    Creates canonicalizedstatement table if it does not exist yet.
-    """
-
-    conn = sqlite3.connect(DB)
-    with conn:
-        cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS canonicalizedstatement(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                statement TEXT NOT NULL UNIQUE,
-                hash INT NOT NULL UNIQUE,
-                instances INT NOT NULL)
-            """
-        )
-
-def handle_explain(response_content, db=None):
-    try:
-        response = json.loads(response_content)
-        explain_items = response.get('explain', [])
-        if explain_items:
-            connect_options = {}
-            if 'h' in EXPLAIN_OPTIONS:
-                connect_options['host'] = EXPLAIN_OPTIONS['h']
-            if 'u' in EXPLAIN_OPTIONS:
-                connect_options['user'] = EXPLAIN_OPTIONS['u']
-            if 'p' in EXPLAIN_OPTIONS and EXPLAIN_OPTIONS['p']:
-                connect_options['passwd'] = EXPLAIN_OPTIONS['p']
-            if db:
-                connect_options['db'] = db
-            print 'connect_options = {0}'.format(connect_options)
-
-            conn = MySQLdb.connect(**connect_options)
-            with conn:
-                cur = conn.cursor()
-                for explain_item in explain_items:
-                    statement = explain_item['statement']
-                    statement_data_id = explain_item['statement_data_id']
-                    try:
-                        print '#' * 80
-                        print 'Executing EXPLAIN {0}...'.format(statement)
-                        sql = 'EXPLAIN {0}'.format(statement)
-                        cur.execute(sql)
-                        description = cur.description
-                        print 'description: {0}'.format(description)
-                        fetched_rows = cur.fetchall()
-                        explain_rows = []
-                        columns = [
-                            'select_id',
-                            'select_type',
-                            'table',
-                            'type',
-                            'possible_keys',
-                            'key',
-                            'key_len',
-                            'ref',
-                            'rows',
-                            'extra']
-                        for fetched_row in fetched_rows:
-                            print 'fetched_row: {0}'.format(fetched_row)
-                            explain_rows.append(dict(zip(
-                                columns, fetched_row)))
-
-                        params = dict(
-                            statement_data_id=statement_data_id,
-                            explain_rows=json.dumps(explain_rows),
-                        )
-                        if db:
-                            params['db'] = db
-                        urlencoded_params = urllib.urlencode(params)
-                        try:
-                            response = url_request(
-                                ARGS.save_explained_statement_url,
-                                data=urlencoded_params)
-                            print 'response.content = {0}'.format(
-                                response.content)
-                            print 'response.code = {0}'.format(
-                                response.code)
-                        except Exception, e:
-                            print 'ERROR: {0}'.format(e)
-                        print '#' * 80
-                        print
-                    except Exception, e:
-                        print 'An error has occurred: {0}'.format(e)
-
-    except Exception, e:
-        print 'An error has occurred while handling explain: {0}'.format(e)
 
 class QueryLogItemParser(object):
     """Query log item parser."""
@@ -1115,7 +947,7 @@ class LocalData:
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS statementdata(
-                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     dt TEXT,
                     statement TEXT,
                     hostname TEXT,
@@ -1133,7 +965,7 @@ class LocalData:
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS explainedstatement(
-                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     dt TEXT,
                     statement TEXT,
                     hostname TEXT,
@@ -1146,10 +978,11 @@ class LocalData:
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS explainresult(
-                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    explained_statement_id INT,
                     select_id INT,
                     select_type TEXT,
-                    table TEXT,
+                    `table` TEXT,
                     type TEXT,
                     possible_keys TEXT,
                     key TEXT,
@@ -1173,9 +1006,28 @@ class LocalData:
         Statement data are stored as RRD.
         """
 
+        if dt is None:
+            dt = datetime.datetime.now()
+
+        is_select_statement = canonicalized_statement.startswith('SELECT ')
+        first_seen = False
+
         conn = sqlite3.connect(LocalData.DB)
         with conn:
             cur = conn.cursor()
+
+            if is_select_statement:
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM statementdata
+                    WHERE canonicalized_statement_hostname_hash=?
+                    """, (canonicalized_statement_hostname_hash,))
+                row = cur.fetchone()
+                count = 0
+                if row:
+                    count = row[0]
+                first_seen = not count
+
             insert_sql = (
                 """
                 INSERT INTO statementdata(
@@ -1245,6 +1097,76 @@ class LocalData:
                         query_time, lock_time,
                         rows_sent, rows_examined,
                         sequence_id, last_updated))
+
+            # run an explain if first seen
+            if first_seen:
+                cur.execute(
+                    """
+                    SELECT dt, statement, hostname, canonicalized_statement,
+                        canonicalized_statement_hash,
+                        canonicalized_statement_hostname_hash
+                    FROM statementdata
+                    WHERE sequence_id=?
+                    """, (sequence_id, ))
+                statement_data_row = list(cur.fetchone())
+                statement_data_row.append(DataManager.get_last_db_used())
+
+                mysql_conn = MySQLdb.connect(
+                    **DataManager.get_explain_connection_options())
+                with mysql_conn:
+                    mysql_cur = mysql_conn.cursor()
+
+                    cur.execute(
+                        """
+                        INSERT INTO explainedstatement(
+                            dt, statement, hostname,
+                            canonicalized_statement,
+                            canonicalized_statement_hash,
+                            canonicalized_statement_hostname_hash,
+                            db)
+                        VALUES (?,?,?,?,?,?,?)
+                        """, statement_data_row)
+                    explained_statement_id = cur.lastrowid
+
+                    try:
+                        explain_rows = DataManager.run_explain(
+                            statement, mysql_cur)
+                        for explain_row in explain_rows:
+                            values = (
+                                explained_statement_id,
+                                explain_row['select_id'],
+                                explain_row['select_type'],
+                                explain_row['table'],
+                                explain_row['type'],
+                                explain_row['possible_keys'],
+                                explain_row['key'],
+                                explain_row['key_len'],
+                                explain_row['ref'],
+                                explain_row['rows'],
+                                explain_row['extra'])
+                            cur.execute(
+                                """
+                                INSERT INTO explainresult(
+                                    explained_statement_id,
+                                    select_id,
+                                    select_type,
+                                    `table`,
+                                    type,
+                                    possible_keys,
+                                    key,
+                                    key_len,
+                                    ref,
+                                    rows,
+                                    extra)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                                """, values)
+
+                    except Exception, e:
+                        print 'ERROR: {0}'.format(e)
+                        traceback.print_exc()
+
+                    mysql_cur.close()
+
             cur.close()
 
 
@@ -1337,6 +1259,10 @@ class DataManager:
     @staticmethod
     def set_last_db_used(last_db_used):
         DataManager._last_db_used = last_db_used
+
+    @staticmethod
+    def get_last_db_used():
+        return DataManager._last_db_used
 
     @staticmethod
     def save_data(log_item_parser):
@@ -1526,6 +1452,101 @@ class GeneralQueryLogProcessor(object):
                 break
 
 
+def print_top_queries(n):
+    """Prints top N queries."""
+    conn = sqlite3.connect(LocalData.DB)
+    with conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                canonicalized_statement,
+                hostname,
+                canonicalized_statement_hostname_hash,
+                COUNT(id)
+            FROM statementdata
+            GROUP BY
+                canonicalized_statement,
+                hostname,
+                canonicalized_statement_hostname_hash
+            ORDER BY COUNT(id) DESC
+            LIMIT ?
+            """, (n,))
+        rows = cur.fetchall()
+
+        print 'Top {0} Queries:'.format(n)
+        for row in rows:
+            print '{0} | {1} | {2}'.format(
+                int_to_hex_str(row[2]), str(row[3]).rjust(4), row[0])
+
+
+def local_run_last_statements(window_length):
+    """Shows a sliding window of last statements seen."""
+
+    conn = sqlite3.connect(LocalData.DB)
+    with conn:
+        cur = conn.cursor()
+        while True:
+            try:
+                dt = datetime.datetime.now()
+                dt_start = dt - datetime.timedelta(minutes=window_length)
+                cur.execute(
+                    """
+                    SELECT
+                        canonicalized_statement,
+                        hostname,
+                        canonicalized_statement_hostname_hash,
+                        canonicalized_statement_hash,
+                        statement,
+                        MAX(dt),
+                        COUNT(dt)
+                    FROM statementdata
+                    WHERE (dt>=?) AND (dt<=?)
+                    GROUP BY
+                        canonicalized_statement,
+                        hostname,
+                        canonicalized_statement_hostname_hash,
+                        canonicalized_statement_hash,
+                        statement
+                    ORDER BY MAX(dt)
+                    """, (dt_start, dt))
+
+                rows = cur.fetchall()
+                row_count = len(rows)
+
+                # calculate counts
+                counts = {}
+                for row in rows:
+                    canonicalized_statement_hostname_hash = row[2]
+                    if canonicalized_statement_hostname_hash in counts:
+                        counts[canonicalized_statement_hostname_hash] += (
+                            row[6])
+                    else:
+                        counts[canonicalized_statement_hostname_hash] = (
+                            row[6])
+
+                statements = []
+                print (
+                    'Statements found in the last {0} minute(s): '
+                    '{1} statement(s)').format(
+                    window_length, row_count)
+                for row in rows:
+                    canonicalized_statement_hostname_hash = row[2]
+                    count = counts[canonicalized_statement_hostname_hash]
+                    print '{0} | {1} | {2} | {3} '.format(
+                        row[5], int_to_hex_str(row[2]), str(count).rjust(4),
+                        row[4])
+                print
+                print
+
+                time.sleep(1)
+
+            except (KeyboardInterrupt, SystemExit):
+                break
+        cur.close()
+
+
+
 def main():
     default_db = '%s/sqlcanonclient.db' % tempfile.gettempdir()
 
@@ -1561,9 +1582,8 @@ def main():
         default='/save-explained-statement/',)
     parser.add_argument(
         '-e', '--explain-options',
-        help='Explain MySQL options: h=<host>,u=<user>,p=<passwd>',
+        help='Explain MySQL options: h=<host>,u=<user>,p=<passwd>,d=<db>',
         default='h=127.0.0.1,u=root')
-
 
     action = parser.add_mutually_exclusive_group()
     action.add_argument(
@@ -1572,6 +1592,18 @@ def main():
     action.add_argument(
         '--file_listen', action='store_true',
         help='Opens up log file and waits for newly written data.')
+    action.add_argument(
+        '--local-run-last-statements', action='store_true',
+        help='In stand alone mode, prints last seen statements')
+    action.add_argument(
+        '--print-top-queries',
+        help='Prints top queries stored on local data.',
+        default=0)
+
+    parser.add_argument(
+        '--sliding-window-length', type=int,
+        help='Length of period in number of minutes.',
+        default=5)
 
     parser.add_argument(
         '-i', '--interface',
@@ -1580,16 +1612,19 @@ def main():
         '-f', '--filter', help='pcap-filter', default='dst port 3306',)
 
     parser.add_argument(
-        '--listen-window-length', type=int,
-        help='Length of period of query list filter in number of minutes.',
-        default=5,)
-
-    parser.add_argument(
         '--print-db-counts', action='store_true',
         help='Prints counts stored in DB at the end of execution.')
 
     global ARGS
     ARGS = parser.parse_args()
+
+    if ARGS.local_run_last_statements and not ARGS.stand_alone:
+        print 'Stand alone required.'
+        sys.exit()
+
+    if ARGS.print_top_queries and not ARGS.stand_alone:
+        print 'Stand alone required.'
+        sys.exit()
 
     if ARGS.stand_alone:
         LocalData.init_db(ARGS.db)
@@ -1615,6 +1650,14 @@ def main():
     try:
         if ARGS.sniff:
             run_packet_sniffer()
+            sys.exit()
+
+        if ARGS.local_run_last_statements:
+            local_run_last_statements(ARGS.sliding_window_length)
+            sys.exit()
+
+        if ARGS.print_top_queries:
+            print_top_queries(ARGS.print_top_queries)
             sys.exit()
 
         if is_file_slow_query_log and ARGS.file:
@@ -1658,6 +1701,7 @@ def main():
 
     except Exception, e:
         print 'An error has occurred: {0}'.format(e)
+        traceback.print_exc()
 
 
 if __name__ == '__main__':
