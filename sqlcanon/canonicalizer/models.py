@@ -132,7 +132,7 @@ class ExplainResult(models.Model):
         return (
             u'<ExplainResult '
             u'id={0}, '
-            u'explained_statement={1}, '
+            u'explained_statement_id={1}, '
             u'select_id={2}, '
             u'select_type={3}, '
             u'table={4}, '
@@ -145,7 +145,7 @@ class ExplainResult(models.Model):
             u'extra={11}'
             u'>').format(
                 self.id,
-                self.explained_statement,
+                self.explained_statement.id,
                 self.select_id,
                 self.select_type,
                 self.table,
