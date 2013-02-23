@@ -895,11 +895,30 @@ def handle_explain(response_content, db=None):
     except Exception, e:
         print 'An error has occurred while handling explain: {0}'.format(e)
 
+class QueryLogItemParser(object):
+    """Query log item parser."""
+
+    def __init__(self):
+        super(QueryLogItemParser, self).__init__()
+
+        self.dt = None
+        self.query_time = None
+        self.lock_time = None
+        self.rows_sent = None
+        self.rows_examined = None
+        self.statement = None
+
+    def parse_statement(self, lines_to_parse):
+        self.statement = lines_to_parse.strip(' ;')
+        return self.statement
+
+
 def process_packet(pktlen, data, timestamp):
     if not data:
         return
 
-    print 'pktlen:', pktlen, 'dt:', datetime.datetime.fromtimestamp(timestamp)
+    print 'pktlen:', pktlen, 'dt:', (
+        datetime.datetime.fromtimestamp(timestamp))
     stack = ip_stack.parse(data)
     payload = stack.next.next.next
     print payload
@@ -908,37 +927,19 @@ def process_packet(pktlen, data, timestamp):
     try:
         # MySQL queries start on the 6th char (?)
         payload = payload[5:]
-
-        if payload:
-            results = canonicalize_statement(payload)
-            for statement, __, canonicalized_statement, __ in results:
-                params = dict(
-                    statement=statement,
-                    hostname=HOSTNAME,
-                    canonicalized_statement=canonicalized_statement,
-                    canonicalized_statement_hash=mmh3.hash(
-                        canonicalized_statement),
-                    canonicalized_statement_hostname_hash=mmh3.hash(
-                        '{0}{1}'.format(canonicalized_statement, HOSTNAME)))
-                urlencoded_params = urllib.urlencode(params)
-
-                try:
-                    # send data to server,
-                    # even if --send-server-data is not specified
-                    response = url_request(
-                        ARGS.submit_url, data=urlencoded_params)
-                    handle_explain(response.content)
-                except Exception, e:
-                    print 'ERROR: {0}'.format(e)
+        log_item_parser = QueryLogItemParser()
+        if log_item_parser.parse_statement(payload):
+            print log_item_parser.statement
+            DataManager.save_data(log_item_parser)
 
     except Exception, e:
         print 'ERROR: {0}'.format(e)
 
-def run_packet_sniffer(args):
-    print 'Sending captured statements to: {0}'.format(args.submit_url)
+
+def run_packet_sniffer():
 
     p = pcap.pcapObject()
-    dev = args.interface
+    dev = ARGS.interface
     net, mask = pcap.lookupnet(dev)
     print 'net:', net, 'mask:', mask
 
@@ -951,7 +952,7 @@ def run_packet_sniffer(args):
     # sample filter:
     #     dst port 3306
     # see: http://www.manpagez.com/man/7/pcap-filter/
-    p.setfilter(args.filter, 0, 0)
+    p.setfilter(ARGS.filter, 0, 0)
 
     print 'Press CTRL+C to end capture'
     try:
@@ -981,7 +982,6 @@ class SlowQueryLogItemParser(object):
         self.line_user_info = None
         self.line_variables = None
         self.line_statement = None
-
 
 
     def parse_time_info(self, line):
@@ -1043,28 +1043,6 @@ class SlowQueryLogProcessor(object):
     def __init__(self):
         super(SlowQueryLogProcessor, self).__init__()
 
-
-    def save_data(self, log_item_parser):
-        results = canonicalize_statement(log_item_parser.statement)
-        for (statement, normalized_statement, canonicalized_statement,
-                __) in results:
-            if normalized_statement.lower().startswith('use '):
-                DataManager.set_last_db_used(
-                    normalized_statement[4:].strip('; '))
-
-            DataManager.save_statement_data(
-                log_item_parser.dt,
-                statement,
-                HOSTNAME,
-                canonicalized_statement,
-                mmh3.hash(canonicalized_statement),
-                mmh3.hash(
-                    '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
-                log_item_parser.query_time,
-                log_item_parser.lock_time,
-                log_item_parser.rows_sent,
-                log_item_parser.rows_examined)
-
     def process_log_contents(self, source):
         """Process contents of MySQL slow query log."""
 
@@ -1117,7 +1095,7 @@ class SlowQueryLogProcessor(object):
 
                 print log_item_parser.statement
 
-                self.save_data(log_item_parser)
+                DataManager.save_data(log_item_parser)
             else:
                 line = source.readline()
 
@@ -1361,6 +1339,29 @@ class DataManager:
         DataManager._last_db_used = last_db_used
 
     @staticmethod
+    def save_data(log_item_parser):
+        results = canonicalize_statement(log_item_parser.statement)
+        for (statement, normalized_statement, canonicalized_statement,
+             __) in results:
+            if normalized_statement.lower().startswith('use '):
+                DataManager.set_last_db_used(
+                    normalized_statement[4:].strip('; '))
+
+            DataManager.save_statement_data(
+                log_item_parser.dt,
+                statement,
+                HOSTNAME,
+                canonicalized_statement,
+                mmh3.hash(canonicalized_statement),
+                mmh3.hash(
+                    '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
+                log_item_parser.query_time,
+                log_item_parser.lock_time,
+                log_item_parser.rows_sent,
+                log_item_parser.rows_examined)
+
+
+    @staticmethod
     def save_statement_data(
         dt, statement, hostname,
         canonicalized_statement, canonicalized_statement_hash,
@@ -1394,7 +1395,9 @@ class DataManager:
             connection_options['user'] = EXPLAIN_OPTIONS['u']
         if 'p' in EXPLAIN_OPTIONS and EXPLAIN_OPTIONS['p']:
             connection_options['passwd'] = EXPLAIN_OPTIONS['p']
-        if DataManager._last_db_used:
+        if 'd' in EXPLAIN_OPTIONS:
+            connection_options['db'] = EXPLAIN_OPTIONS['d']
+        elif DataManager._last_db_used:
             connection_options['db'] = DataManager._last_db_used
         return connection_options
 
@@ -1462,27 +1465,6 @@ class GeneralQueryLogProcessor(object):
         self._query_start_pattern = re.compile(
             GeneralQueryLogProcessor.QUERY_LOG_PATTERN_QUERY_START)
 
-    def save_data(self, log_item_parser):
-        results = canonicalize_statement(log_item_parser.statement)
-        for (statement, normalized_statement, canonicalized_statement,
-             __) in results:
-            if normalized_statement.lower().startswith('use '):
-                DataManager.set_last_db_used(
-                    normalized_statement[4:].strip('; '))
-
-            DataManager.save_statement_data(
-                log_item_parser.dt,
-                statement,
-                HOSTNAME,
-                canonicalized_statement,
-                mmh3.hash(canonicalized_statement),
-                mmh3.hash(
-                    '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
-                log_item_parser.query_time,
-                log_item_parser.lock_time,
-                log_item_parser.rows_sent,
-                log_item_parser.rows_examined)
-
     def process_log_contents(self, source):
         """Process contents of MySQL general query log."""
         line = ''
@@ -1496,7 +1478,7 @@ class GeneralQueryLogProcessor(object):
                     log_item_parser = GeneralQueryLogItemParser()
                     if log_item_parser.parse_statement(lines_to_parse):
                         print log_item_parser.statement
-                        self.save_data(log_item_parser)
+                        DataManager.save_data(log_item_parser)
                         lines_to_parse = ''
                     else:
                         # could not parse current line(s)
@@ -1507,7 +1489,7 @@ class GeneralQueryLogProcessor(object):
                         # check if we can parse the recent line
                         if log_item_parser.parse_statement(lines_to_parse):
                             print log_item_parser.statement
-                            self.save_data(log_item_parser)
+                            DataManager.save_data(log_item_parser)
                             lines_to_parse = ''
 
                     parse_now = False
@@ -1547,11 +1529,8 @@ class GeneralQueryLogProcessor(object):
 def main():
     default_db = '%s/sqlcanonclient.db' % tempfile.gettempdir()
 
-    global MYSQL_HOST, MYSQL_DB, MYSQL_USER, MYSQL_PASSWORD
-    MYSQL_HOST = '127.0.0.1'
-    MYSQL_DB, MYSQL_USER, MYSQL_PASSWORD = None, None, None
-
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument(
         'file', nargs='?',
@@ -1605,12 +1584,6 @@ def main():
         help='Length of period of query list filter in number of minutes.',
         default=5,)
 
-    # this options will be used to execute EXPLAIN statement
-    parser.add_argument('--mysql-host', help='mysql host')
-    parser.add_argument('--mysql-db', help='mysql db')
-    parser.add_argument('--mysql-user', help='mysql user')
-    parser.add_argument('--mysql-password', help='mysql password')
-
     parser.add_argument(
         '--print-db-counts', action='store_true',
         help='Prints counts stored in DB at the end of execution.')
@@ -1639,19 +1612,9 @@ def main():
     is_file_slow_query_log = (ARGS.type == 's')
     is_file_general_query_log = (ARGS.type == 'g')
 
-    MYSQL_HOST = ARGS.mysql_host
-    MYSQL_DB = ARGS.mysql_db
-    MYSQL_USER = ARGS.mysql_user
-    MYSQL_PASSWORD = ARGS.mysql_password
-
-    if MYSQL_PASSWORD is not None:
-        # ask for password if password is not None but is an empty string
-        if not MYSQL_PASSWORD:
-            MYSQL_PASSWORD = getpass.getpass()
-
     try:
         if ARGS.sniff:
-            run_packet_sniffer(ARGS)
+            run_packet_sniffer()
             sys.exit()
 
         if is_file_slow_query_log and ARGS.file:
