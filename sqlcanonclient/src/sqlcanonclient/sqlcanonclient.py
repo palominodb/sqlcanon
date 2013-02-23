@@ -596,137 +596,6 @@ def canonicalize_statement(statement):
     return result
 
 
-def db_increment_canonicalized_query_count_from_results(results):
-    """
-    Increment db counts with data from results..
-    """
-
-    for result in results:
-        query, _, canonicalized_query, _ = result
-        print 'Query: {0}'.format(query)
-        db_increment_canonicalized_statement_count(canonicalized_query)
-
-
-QUERY_LISTER = QueryLister()
-
-
-def append_statements_to_query_lister(results):
-    """
-    Append statements from canonicalize sql results to QUERY_LISTER.
-    This method increments db counts too.
-    """
-
-    for result in results:
-        statement, _, canonicalized_statement, _ = result
-        canonicalized_statement = canonicalized_statement if canonicalized_statement else STATEMENT_UNKNOWN
-        db_increment_canonicalized_statement_count(canonicalized_statement)
-        QUERY_LISTER.append_statement(statement=statement,
-            canonicalized_statement=canonicalized_statement)
-
-def print_statements(listen_window_length):
-    dt_now = datetime.datetime.now()
-    result = QUERY_LISTER.get_list(
-        dt_now - datetime.timedelta(minutes=listen_window_length),
-        dt_now)
-    print
-    print '#### Queries found in the last {0} minutes:'.format(listen_window_length)
-    if result:
-        for dt, statement, canonicalized_statement, hash, count in result:
-            print\
-            dt.strftime('%Y-%m-%d %H:%M:%S %f'),\
-            '[count:{0}{1}]'.format(count, '-unknown' if canonicalized_statement == STATEMENT_UNKNOWN else ''),\
-            '[hash:{0}]'.format(int_to_hex_str(hash)),\
-            statement
-    else:
-        print '(None)'
-
-
-def db_increment_canonicalized_statement_count(canonicalized_statement,
-                                               canonicalized_statement_hash=None,
-                                               count=1):
-    """
-    Increments count on database.
-    """
-
-    if not canonicalized_statement:
-        canonicalized_statement = STATEMENT_UNKNOWN
-        # recompute canonicalized_statement_hash
-        canonicalized_statement_hash = mmh3.hash(canonicalized_statement)
-
-    if not canonicalized_statement_hash:
-        canonicalized_statement_hash = mmh3.hash(canonicalized_statement)
-
-    conn = sqlite3.connect(DB)
-    with conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT instances FROM canonicalizedstatement WHERE hash = ?
-            """, (canonicalized_statement_hash,))
-        row = cur.fetchone()
-        if row:
-            count = row[0] + count
-            cur.execute("""
-                UPDATE canonicalizedstatement
-                SET
-                    instances = ?
-                WHERE hash = ?
-                """, (count, canonicalized_statement_hash))
-        else:
-            cur.execute("""
-                INSERT INTO canonicalizedstatement(statement, hash, instances)
-                VALUES(?, ?, ?)
-                """, (canonicalized_statement, canonicalized_statement_hash, count))
-
-    #try:
-    #    info = CanonicalizedStatement.objects.get(
-    #        hash=canonicalized_statement_hash)
-    #    info.instances += count
-    #    info.save()
-    #except ObjectDoesNotExist:
-    #    CanonicalizedStatement.objects.create(
-    #        statement=canonicalized_statement,
-    #        hash=canonicalized_statement_hash,
-    #        instances=count)
-
-def print_db_counts():
-    """
-    Prints counts stored on database.
-    """
-
-    print
-    print 'Counts stored in database:'
-    print '=' * 80
-
-    item_count = 0
-
-    conn = sqlite3.connect(DB)
-    with conn:
-        cur = conn.cursor()
-        cur.execute("SELECT statement, hash, instances FROM canonicalizedstatement")
-        while True:
-            row = cur.fetchone()
-            if not row:
-                break
-            item_count += 1
-            #print '{0}. {1} => {2}'.format(item_count, row[1], row[0])
-            print '{0}. [count={1}] [hash={2}] {3}'.format(
-                item_count,
-                row[2],
-                int_to_hex_str(row[1]),
-                row[0]
-            )
-
-    #statements = CanonicalizedStatement.objects.all()
-    #for statement in statements:
-    #    item_count += 1
-    #    print '{0}. [count={1}] [hash={2}] {3}'.format(
-    #        item_count,
-    #        statement.instances,
-    #        int_to_hex_str(statement.hash),
-    #        statement.statement
-    #    )
-
-
 class QueryLogItemParser(object):
     """Query log item parser."""
 
@@ -1587,11 +1456,9 @@ def main():
 
     action = parser.add_mutually_exclusive_group()
     action.add_argument(
-        '--sniff', action='store_true', default=False,
+        '-l', '--sniff',
+        action='store_true', default=False,
         help='launch packet sniffer')
-    action.add_argument(
-        '--file_listen', action='store_true',
-        help='Opens up log file and waits for newly written data.')
     action.add_argument(
         '--local-run-last-statements', action='store_true',
         help='In stand alone mode, prints last seen statements')
@@ -1600,20 +1467,18 @@ def main():
         help='Prints top queries stored on local data.',
         default=0)
 
+    # local-run-last-statements options
     parser.add_argument(
         '--sliding-window-length', type=int,
         help='Length of period in number of minutes.',
         default=5)
 
+    # packet sniffer options
     parser.add_argument(
         '-i', '--interface',
         help='interface to sniff from', default='lo0')
     parser.add_argument(
         '-f', '--filter', help='pcap-filter', default='dst port 3306',)
-
-    parser.add_argument(
-        '--print-db-counts', action='store_true',
-        help='Prints counts stored in DB at the end of execution.')
 
     global ARGS
     ARGS = parser.parse_args()
@@ -1682,22 +1547,9 @@ def main():
                 query_log_processor.process_log_contents(f)
 
         elif is_file_general_query_log and not ARGS.file :
-            # read from stdin
             print 'Reading MySQL general query log from stdin...'
             query_log_processor = GeneralQueryLogProcessor()
             query_log_processor.process_log_contents(stdin)
-
-        #elif ARGS.file and is_file_general_query_log and ARGS.file_listen:
-        #    print (
-        #        ('Listening for new data in general query log file {0} '
-        #        '(window_length={1})...')
-        #        .format(ARGS.file, ARGS.listen_window_length))
-        #    query_log_listen(log_file=ARGS.file, listen_frequency=1,
-        #        listen_window_length=ARGS.listen_window_length)
-
-
-        if ARGS.print_db_counts:
-            print_db_counts()
 
     except Exception, e:
         print 'An error has occurred: {0}'.format(e)
