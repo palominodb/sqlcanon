@@ -1,53 +1,89 @@
+Applications
+============
+
+sqlcanon - server, a Django web application
+sqlcanonclient - a CLI application
+
+
 sqlcanon
-========
+--------
 
-Canonicalize SQL statements
--- normalize whitespace and quoting
--- normalize IN() and VALUES() clauses
+### Installation of Requirements
+
+Change directory to sqlcanon:
+`$ cd sqlcanon`
+
+Activate your virtual environment and install the project requirements:
+
+In Ubuntu 12.04 you can use the bash script to install the project requirements including the required libraries for building PIL:
+`(env)$ ./install_requirements.sh`
+If you have a different OS, ensure first the PIL can find the required libraries for your OS, then run the following:
+`(env)$ pip install -r requirements.txt`
+
+### Database Initialization
+
+Run the following commands:
+`(env)$ python manage.py syncdb
+(env)$ python manage.py migrate`
+
+### Running
+
+**To deploy it using a webserver**
+
+sqlcanon is a Django project, to deploy it using a web server, please refer to Django documentation.
+
+**To run it using the built-in server**
+
+Syntax:
+`python manage.py runserver [options] [optional port number, or ipaddr:port]`
+
+Run with default:
+`(env)$ python manage.py runserver`
+The server will be accessible via: http://localhost:8000/
+
+### Web pages
+
+Homepage:
+http://localhost:8000/
+
+Admin page:
+http://localhost:8000/admin/
 
 
-Notes
-=====
+sqlcanonclient
+--------------
 
-** Locations **
+This application canonicalizes SQL statements (normalizes whitespace and quoting, normalizes IN() and VALUES() clauses) and can collect data about the statement and save locally or send them to sqlcanon server.
 
-sqlcanon - server/Django web application
-sqlcanonclient - sqlcanon client setup and source files
+### Installation of Requirements
 
-** Installation of requirements **
+Go to sqlcanonclient source directory:
+`(env)$ cd sqlcanonclient/src/sqlcanonclient`
 
-$ pip install -r requirements.txt
+Install requirements:
+`(env)$ pip install -r requirements.txt`
 
-It is recommended to create a virtual environment and install the requirements there.
+### Sample Usages:
 
-** Database initialization **
+View options:
+`(env)$ ./sqlcanonclient.py -h`
 
-$ python manage.py syncdb
-$ python manage.py migrate
+Launch packet sniffer and send data to server (run as root, privileges to capture packet data are required):
+`(env)$ ./sqlcanonclient.py -l -i lo`
 
-** To run built-in http server to accept statements captured by sqlcanonclient: **
+Listen from loopback interface, provide options for running EXPLAIN,:
+`(env)$ ./sqlcanonclient.py -l -i lo -e h=127.0.0.1,u=root,p=pass`
 
-$ python manage.py runserver
+Listen from loopback interface, provide options and ask password for running EXPLAIN,:
+`(env)$ ./sqlcanonclient.py -l -i lo -e h=127.0.0.1,u=root,p`
 
-** To run sniffer: **
+Read MySQL slow-query log file:
+`(env)$ ./sqlcanonclient.py /var/log/mysql/mysql-slow.log`
 
-$ sudo python sqlcanonclient.py --sniff --interface <interface> --filter <filter>
+Read MySQL general query log file:
+`(env)$ ./sqlcanonclient.py -t g /var/log/mysql/mysql.log`
 
-Example: $ sudo python sqlcanonclient.py --sniff --interface lo --filter="dst port 3306"
+Read MySQL general query log via stdin:
+`(env)$ cat /var/log/mysql/mysql.log | ./sqlcanonclient.py -t g`
 
-Note: To execute EXPLAIN statements, supply values for:
-      --mysql-host, --mysql-db, --mysql-user, --mysql-password
 
-Try connecting to mysql and try some statements: $ mysql -h 127.0.0.1 -u <user>
-
-** Web app pages **
-
-The homepage contains link to view info about captured statements: http://localhost:8000/
-
-** Management console commands **
-
-Most stuff that was previously on sqlcanon.py has been converted as Django management console command.
-
-See command help for info:
-
-$ python manage.py canonicalize -h
