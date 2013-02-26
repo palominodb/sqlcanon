@@ -681,9 +681,11 @@ class SlowQueryLogItemParser(object):
 
         self.line_time_info = None
         self.line_user_info = None
-        self.line_variables = None
         self.line_statement = None
+        self.line_administrator_command = None
 
+        self.line_header_data = []
+        self.header_data = {}
 
     def parse_time_info(self, line):
         """Parses time info."""
@@ -698,27 +700,49 @@ class SlowQueryLogItemParser(object):
         # Just store it for now.
         self.line_user_info = line
 
-    def parse_variables(self, line):
-        """Parses variables."""
+    def parse_administrator_command(self, line):
+        # Just store it for now
+        self.line_administator_command = line
 
-        line = line[1:]
-        self.line_variables = line
-        words = [word.lower().strip().rstrip(':') for word in line.split()]
-        i = iter(words)
-        vars = dict(itertools.izip(i, i))
-        for k, v in vars.iteritems():
-            setattr(self, k, v)
+    def parse_header_data(self, line, source):
+        """Parses header data."""
 
-    def parse_statement(self, file):
+        self.line_header_data = []
+        self.header_data = {}
+        while True:
+            # make sure it starts with #
+            if line.startswith('#'):
+                self.line_header_data.append(line)
+                if line.startswith('# Time'):
+                    self.parse_time_info(line)
+                elif line.startswith('# User@Host'):
+                    self.parse_user_info(line)
+                elif line.startswith('# administrator command'):
+                    self.parse_administrator_command(line)
+                else:
+                    line = line[1:]
+                    words = [word.lower().strip().rstrip(':')
+                        for word in line.split()]
+                    i = iter(words)
+                    self.header_data.update(dict(itertools.izip(i, i)))
+                line = source.readline()
+            else:
+                # Line does not start with #,
+                # this means that this is the end of the variables
+                # section, we exit the loop and return the last line
+                # read so that the next parser can process it.
+                break
+        # be sure to return the last line read
+        return line
+
+    def parse_statement(self, line, source):
         """Parses statement."""
 
-        # read statement
-        line = file.readline()
         statement = line
 
         # statement could span multiple lines
         while True:
-            line = file.readline()
+            line = source.readline()
             if line:
                 if line.rstrip().endswith('started with:'):
                     break
@@ -766,33 +790,14 @@ class SlowQueryLogProcessor(object):
 
             if line.startswith('# '):
                 log_item_parser = SlowQueryLogItemParser()
-                if line.startswith('# Time'):
-                    log_item_parser.parse_time_info(line)
-                    last_dt = log_item_parser.dt
+                line = log_item_parser.parse_header_data(line, source)
 
-                    print 'Date/Time:', log_item_parser.dt
-
-                    # read user info
-                    line = source.readline()
-                else:
-                    # no time info, this line contains user info
-                    pass
-                log_item_parser.parse_user_info(line)
-
-                # read variables info
-                log_item_parser.parse_variables(source.readline())
-
-                print '{0}: {1},'.format(
-                    'Query time', log_item_parser.query_time),
-                print '{0}: {1},'.format(
-                    'Lock time', log_item_parser.lock_time),
-                print '{0}: {1},'.format(
-                    'Rows sent', log_item_parser.rows_sent),
-                print '{0}: {1},'.format(
-                    'Rows examined', log_item_parser.rows_examined)
+                for k,v in log_item_parser.header_data.iteritems():
+                    print '{0}: {1}'.format(k, v),
+                print
 
                 # read statement
-                line = log_item_parser.parse_statement(source)
+                line = log_item_parser.parse_statement(line, source)
 
                 print log_item_parser.statement
 
@@ -827,6 +832,12 @@ class LocalData:
                     lock_time REAL,
                     rows_sent INT,
                     rows_examined INT,
+                    rows_affected INT,
+                    rows_read INT,
+                    bytes_sent INT,
+                    tmp_tables INT,
+                    tmp_disk_tables INT,
+                    tmp_table_sizes INT,
                     sequence_id INT,
                     last_updated TEXT
                 )
@@ -868,8 +879,7 @@ class LocalData:
             dt, statement, hostname,
             canonicalized_statement, canonicalized_statement_hash,
             canonicalized_statement_hostname_hash,
-            query_time=None, lock_time=None,
-            rows_sent=None, rows_examined=None):
+            header_data):
         """Saves statement data.
 
         Statement data are stored as RRD.
@@ -905,8 +915,11 @@ class LocalData:
                     canonicalized_statement_hash,
                     canonicalized_statement_hostname_hash,
                     query_time, lock_time, rows_sent, rows_examined,
+                    rows_affected, rows_read, bytes_sent,
+                    tmp_tables, tmp_disk_tables, tmp_table_sizes,
                     sequence_id, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)
             update_sql = (
                 """
@@ -922,7 +935,13 @@ class LocalData:
                     lock_time = ?,
                     rows_sent = ?,
                     rows_examined = ?,
-                    last_updated =?
+                    rows_affected = ?,
+                    rows_read = ?,
+                    bytes_sent = ?,
+                    tmp_tables = ?,
+                    tmp_disk_tables = ?,
+                    tmp_table_sizes = ?,
+                    last_updated = ?
                 WHERE sequence_id = ?
                 """)
 
@@ -945,27 +964,24 @@ class LocalData:
                 """, (sequence_id, ))
             row = cur.fetchone()
             last_updated = datetime.datetime.now()
+            header_data_keys = (
+                'query_time', 'lock_time', 'rows_sent',
+                'rows_examined', 'rows_affected', 'rows_read',
+                'bytes_sent', 'tmp_tables', 'tmp_disk_tables',
+                'tmp_table_sizes')
+            data = [
+                dt, statement, hostname,
+                canonicalized_statement,
+                canonicalized_statement_hash,
+                canonicalized_statement_hostname_hash]
+            data.extend(
+                [header_data.get(k) for k in header_data_keys])
             if row and int(row[0]):
-                cur.execute(
-                    update_sql,
-                    (
-                        dt, statement, hostname,
-                        canonicalized_statement,
-                        canonicalized_statement_hash,
-                        canonicalized_statement_hostname_hash,
-                        query_time, lock_time, rows_sent, rows_examined,
-                        last_updated, sequence_id))
+                data.extend((last_updated, sequence_id))
+                cur.execute(update_sql, data)
             else:
-                cur.execute(
-                    insert_sql,
-                    (
-                        dt, statement, hostname,
-                        canonicalized_statement,
-                        canonicalized_statement_hash,
-                        canonicalized_statement_hostname_hash,
-                        query_time, lock_time,
-                        rows_sent, rows_examined,
-                        sequence_id, last_updated))
+                data.extend((sequence_id, last_updated))
+                cur.execute(insert_sql, data)
 
             # run an explain if first seen
             if first_seen:
@@ -980,61 +996,64 @@ class LocalData:
                 statement_data_row = list(cur.fetchone())
                 statement_data_row.append(DataManager.get_last_db_used())
 
-                mysql_conn = MySQLdb.connect(
-                    **DataManager.get_explain_connection_options())
-                with mysql_conn:
-                    mysql_cur = mysql_conn.cursor()
+                try:
+                    mysql_conn = MySQLdb.connect(
+                        **DataManager.get_explain_connection_options())
+                    with mysql_conn:
+                        mysql_cur = mysql_conn.cursor()
 
-                    cur.execute(
-                        """
-                        INSERT INTO explainedstatement(
-                            dt, statement, hostname,
-                            canonicalized_statement,
-                            canonicalized_statement_hash,
-                            canonicalized_statement_hostname_hash,
-                            db)
-                        VALUES (?,?,?,?,?,?,?)
-                        """, statement_data_row)
-                    explained_statement_id = cur.lastrowid
+                        cur.execute(
+                            """
+                            INSERT INTO explainedstatement(
+                                dt, statement, hostname,
+                                canonicalized_statement,
+                                canonicalized_statement_hash,
+                                canonicalized_statement_hostname_hash,
+                                db)
+                            VALUES (?,?,?,?,?,?,?)
+                            """, statement_data_row)
+                        explained_statement_id = cur.lastrowid
 
-                    try:
-                        explain_rows = DataManager.run_explain(
-                            statement, mysql_cur)
-                        for explain_row in explain_rows:
-                            values = (
-                                explained_statement_id,
-                                explain_row['select_id'],
-                                explain_row['select_type'],
-                                explain_row['table'],
-                                explain_row['type'],
-                                explain_row['possible_keys'],
-                                explain_row['key'],
-                                explain_row['key_len'],
-                                explain_row['ref'],
-                                explain_row['rows'],
-                                explain_row['extra'])
-                            cur.execute(
-                                """
-                                INSERT INTO explainresult(
+                        try:
+                            explain_rows = DataManager.run_explain(
+                                statement, mysql_cur)
+                            for explain_row in explain_rows:
+                                values = (
                                     explained_statement_id,
-                                    select_id,
-                                    select_type,
-                                    `table`,
-                                    type,
-                                    possible_keys,
-                                    key,
-                                    key_len,
-                                    ref,
-                                    rows,
-                                    extra)
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                                """, values)
+                                    explain_row['select_id'],
+                                    explain_row['select_type'],
+                                    explain_row['table'],
+                                    explain_row['type'],
+                                    explain_row['possible_keys'],
+                                    explain_row['key'],
+                                    explain_row['key_len'],
+                                    explain_row['ref'],
+                                    explain_row['rows'],
+                                    explain_row['extra'])
+                                cur.execute(
+                                    """
+                                    INSERT INTO explainresult(
+                                        explained_statement_id,
+                                        select_id,
+                                        select_type,
+                                        `table`,
+                                        type,
+                                        possible_keys,
+                                        key,
+                                        key_len,
+                                        ref,
+                                        rows,
+                                        extra)
+                                    VALUES
+                                        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    """, values)
 
-                    except Exception, e:
-                        print 'ERROR: {0}'.format(e)
-                        traceback.print_exc()
+                        except Exception, e:
+                            print 'ERROR: {0}'.format(e)
 
-                    mysql_cur.close()
+                        mysql_cur.close()
+                except Exception, e:
+                    print 'ERROR: {0}'.format(e)
 
             cur.close()
 
@@ -1047,8 +1066,7 @@ class ServerData:
             statement, hostname,
             canonicalized_statement, canonicalized_statement_hash,
             canonicalized_statement_hostname_hash,
-            query_time=None, lock_time=None,
-            rows_sent=None, rows_examined=None):
+            header_data):
         params = dict(
             statement=statement,
             hostname=hostname,
@@ -1057,14 +1075,13 @@ class ServerData:
             canonicalized_statement_hostname_hash=
                 canonicalized_statement_hostname_hash
         )
-        if query_time:
-            params['query_time'] = query_time
-        if lock_time:
-            params['lock_time'] = lock_time
-        if rows_sent:
-            params['rows_sent'] = rows_sent
-        if rows_examined:
-            params['rows_examined'] = rows_examined
+        header_data_keys = (
+            'query_time', 'lock_time', 'rows_sent', 'rows_examined',
+            'rows_affected', 'rows_read', 'bytes_sent',
+            'tmp_tables', 'tmp_disk_tables', 'tmp_table_sizes')
+        for k in header_data_keys:
+            if k in header_data:
+                params[k] = header_data[k]
 
         urlencoded_params = urllib.urlencode(params)
         try:
@@ -1150,10 +1167,7 @@ class DataManager:
                 mmh3.hash(canonicalized_statement),
                 mmh3.hash(
                     '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
-                log_item_parser.query_time,
-                log_item_parser.lock_time,
-                log_item_parser.rows_sent,
-                log_item_parser.rows_examined)
+                log_item_parser.header_data)
 
 
     @staticmethod
@@ -1161,25 +1175,25 @@ class DataManager:
         dt, statement, hostname,
         canonicalized_statement, canonicalized_statement_hash,
         canonicalized_statement_hostname_hash,
-        query_time=None, lock_time=None,
-        rows_sent=None, rows_examined=None):
+        header_data):
 
         if ARGS.stand_alone:
             LocalData.save_statement_data(
                 dt, statement, hostname,
                 canonicalized_statement, canonicalized_statement_hash,
                 canonicalized_statement_hostname_hash,
-                query_time, lock_time,
-                rows_sent, rows_examined)
+                header_data)
         else:
             response = ServerData.save_statement_data(
                 statement, hostname,
                 canonicalized_statement, canonicalized_statement_hash,
                 canonicalized_statement_hostname_hash,
-                query_time, lock_time,
-                rows_sent, rows_examined)
+                header_data)
             if response:
-                ServerData.process_explain_requests(response.content)
+                try:
+                    ServerData.process_explain_requests(response.content)
+                except Exception, e:
+                    print 'ERROR: {0}'.format(e)
 
     @staticmethod
     def get_explain_connection_options():

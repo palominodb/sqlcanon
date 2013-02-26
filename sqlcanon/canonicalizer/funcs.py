@@ -28,15 +28,7 @@ def save_explained_statement(statement_data_id, explain_rows, db=None):
     return explained_statement
 
 
-def save_statement_data(
-        dt,
-        statement, hostname,
-        canonicalized_statement, canonicalized_statement_hash,
-        canonicalized_statement_hostname_hash,
-        query_time=None,
-        lock_time=None,
-        rows_sent=None,
-        rows_examined=None):
+def save_statement_data(**kwargs):
     """Saves statement data.
 
     Statement data are stored as RRD.
@@ -55,32 +47,47 @@ def save_statement_data(
     try:
         statement_data = app_models.StatementData.objects.get(
             sequence_id=sequence_id)
-        statement_data.dt = dt
-        statement_data.statement = statement
-        statement_data.hostname = hostname
-        statement_data.canonicalized_statement = canonicalized_statement
+        statement_data.dt = kwargs.get('dt')
+        statement_data.statement = kwargs.get('statement')
+        statement_data.hostname = kwargs.get('hostname')
+        statement_data.canonicalized_statement = (
+            kwargs.get('canonicalized_statement'))
         statement_data.canonicalized_statement_hash = (
-            canonicalized_statement_hash)
+            kwargs.get('canonicalized_statement_hash'))
         statement_data.canonicalized_statement_hostname_hash = (
-            canonicalized_statement_hostname_hash)
-        statement_data.query_time = query_time
-        statement_data.lock_time = lock_time
-        statement_data.rows_sent = rows_sent
-        statement_data.rows_examined = rows_examined
+            kwargs.get('canonicalized_statement_hostname_hash'))
+        statement_data.query_time = kwargs.get('query_time')
+        statement_data.lock_time = kwargs.get('lock_time')
+        statement_data.rows_sent = kwargs.get('rows_sent')
+        statement_data.rows_examined = kwargs.get('rows_examined')
+        statement_data.rows_affected = kwargs.get('rows_affected')
+        statement_data.rows_read = kwargs.get('rows_read')
+        statement_data.bytes_sent = kwargs.get('bytes_sent')
+        statement_data.tmp_tables = kwargs.get('tmp_tables')
+        statement_data.tmp_disk_tables = kwargs.get('tmp_disk_tables')
+        statement_data.tmp_table_sizes = kwargs.get('tmp_table_sizes')
         statement_data.save()
     except ObjectDoesNotExist:
         statement_data = app_models.StatementData.objects.create(
-            dt=dt,
-            statement=statement,
-            hostname=hostname,
-            canonicalized_statement=canonicalized_statement,
-            canonicalized_statement_hash=canonicalized_statement_hash,
+            dt=kwargs.get('dt'),
+            statement=kwargs.get('statement'),
+            hostname=kwargs.get('hostname'),
+            canonicalized_statement=
+                kwargs.get('canonicalized_statement'),
+            canonicalized_statement_hash=
+                kwargs.get('canonicalized_statement_hash'),
             canonicalized_statement_hostname_hash=
-                canonicalized_statement_hostname_hash,
-            query_time=query_time,
-            lock_time=lock_time,
-            rows_sent=rows_sent,
-            rows_examined=rows_examined,
+                kwargs.get('canonicalized_statement_hostname_hash'),
+            query_time=kwargs.get('query_time'),
+            lock_time=kwargs.get('lock_time'),
+            rows_sent=kwargs.get('rows_sent'),
+            rows_examined=kwargs.get('rows_examined'),
+            rows_affected=kwargs.get('rows_affected'),
+            rows_read=kwargs.get('rows_read'),
+            bytes_sent=kwargs.get('bytes_sent'),
+            tmp_tables=kwargs.get('tmp_tables'),
+            tmp_disk_tables=kwargs.get('tmp_disk_tables'),
+            tmp_table_sizes=kwargs.get('tmp_table_sizes'),
             sequence_id=sequence_id,
         )
     return statement_data

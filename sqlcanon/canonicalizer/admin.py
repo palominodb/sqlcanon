@@ -9,6 +9,8 @@ class StatementDataAdmin(admin.ModelAdmin):
         'canonicalized_statement', 'canonicalized_statement_hash_hex_str',
         'canonicalized_statement_hostname_hash_hex_str',
         'query_time', 'lock_time', 'rows_sent', 'rows_examined',
+        'rows_affected', 'rows_read', 'bytes_sent',
+        'tmp_tables', 'tmp_disk_tables', 'tmp_table_sizes',
         'sequence_id', 'last_updated')
 
 

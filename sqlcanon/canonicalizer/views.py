@@ -1,7 +1,8 @@
 import datetime
+import decimal
 import logging
 
-from django.conf import settings 
+from django.conf import settings
 from django.db.models import Max, Count
 from django.http import HttpResponse
 from django.shortcuts import render_to_response
@@ -57,80 +58,58 @@ def save_explained_statement(request):
 def save_statement_data(request):
     """Saves statement data."""
 
-    def post_vars(post):
+    def get_post_vars(post):
         """Returns variables from request post."""
 
-        statement = post.get('statement')
-
-        hostname = post.get('hostname')
-
-        canonicalized_statement = post.get(
+        v = {}
+        v['statement'] = post.get('statement')
+        v['hostname'] = post.get('hostname')
+        v['canonicalized_statement'] = post.get(
             'canonicalized_statement')
-
-        canonicalized_statement_hash = post.get(
-            'canonicalized_statement_hash')
-        if canonicalized_statement_hash:
-            canonicalized_statement_hash = int(
-                canonicalized_statement_hash)
-
-        canonicalized_statement_hostname_hash = post.get(
-            'canonicalized_statement_hostname_hash')
-        if canonicalized_statement_hostname_hash:
-            canonicalized_statement_hostname_hash = int(
-                canonicalized_statement_hostname_hash)
-
-        query_time = post.get('query_time')
-        if query_time:
-            query_time = float(query_time)
-
-        lock_time = post.get('lock_time')
-        if lock_time:
-            lock_time = float(lock_time)
-
-        rows_sent = post.get('rows_sent')
-        if rows_sent:
-            rows_sent = float(rows_sent)
-
-        rows_examined = post.get('rows_examined')
-        if rows_examined:
-            rows_examined = float(rows_examined)
-
-        return (
-            statement,
-            hostname,
-            canonicalized_statement,
-            canonicalized_statement_hash,
-            canonicalized_statement_hostname_hash,
-            query_time,
-            lock_time,
-            rows_sent,
-            rows_examined
-        )
+        v['canonicalized_statement_hash'] = int(post.get(
+            'canonicalized_statement_hash'))
+        v['canonicalized_statement_hostname_hash'] = int(
+            post.get('canonicalized_statement_hostname_hash'))
+        if 'query_time' in post:
+            v['query_time'] = float(post.get('query_time'))
+        if 'lock_time' in post:
+            v['lock_time'] = float(post.get('lock_time'))
+        if 'rows_sent' in post:
+            v['rows_sent'] = decimal.Decimal(post.get('rows_sent'))
+        if 'rows_examined' in post:
+            v['rows_examined'] = decimal.Decimal(post.get('rows_examined'))
+        if 'rows_affected' in post:
+            v['rows_affected'] = decimal.Decimal(post.get('rows_affected'))
+        if 'rows_read' in post:
+            v['rows_read'] = decimal.Decimal(post.get('rows_read'))
+        if 'bytes_sent' in post:
+            v['bytes_sent'] = decimal.Decimal(post.get('bytes_sent'))
+        if 'tmp_tables' in post:
+            v['tmp_tables'] = decimal.Decimal(post.get('tmp_tables'))
+        if 'tmp_disk_tables' in post:
+            v['tmp_disk_tables'] = decimal.Decimal(post.get('tmp_disk_tables'))
+        if 'tmp_table_sizes' in post:
+            v['tmp_table_sizes'] = decimal.Decimal(post.get('tmp_table_sizes'))
+        return v
 
     # store here the statements that needs to be EXPLAINed
     explain = []
     try:
         if request.method == 'POST':
-            LOGGER.debug('request.POST={0}'.format(request.POST))
-            post_vars_packed = post_vars(request.POST)
-            (
-                statement,
-                hostname,
-                canonicalized_statement,
-                canonicalized_statement_hash,
-                canonicalized_statement_hostname_hash,
-                query_time,
-                lock_time,
-                rows_sent,
-                rows_examined
-            ) = post_vars_packed
+            post_vars = get_post_vars(request.POST)
 
-            dt = timezone.now()
-            
-            LOGGER.debug('dt={0}, post_vars_packed={1}'.format(dt,
-                post_vars_packed))
+            post_vars['dt'] = timezone.now()
 
-            is_select_statement = canonicalized_statement.startswith('SELECT ')
+            LOGGER.debug('post_vars={0}'.format(post_vars))
+
+            statement = post_vars.get('statement')
+            canonicalized_statement = post_vars.get(
+                'canonicalized_statement')
+            canonicalized_statement_hostname_hash = post_vars.get(
+                'canonicalized_statement_hostname_hash')
+
+            is_select_statement = canonicalized_statement.startswith(
+                'SELECT ')
             first_seen = False
             if is_select_statement:
                 count = (app_models.StatementData.objects.filter(
@@ -138,12 +117,12 @@ def save_statement_data(request):
                         canonicalized_statement_hostname_hash)
                     .count())
 
-                # first_seen is set to True, if this is the first time we saw
-                # this statement
+                # first_seen is set to True, if this is the first time
+                # we saw this statement
                 first_seen = not count
 
             statement_data = app_funcs.save_statement_data(
-                dt, *post_vars_packed)
+                **post_vars)
 
             if first_seen:
                 explain.append(dict(

@@ -17,8 +17,31 @@ class StatementData(models.Model):
 
     query_time = models.FloatField(blank=True, null=True, default=None)
     lock_time = models.FloatField(blank=True, null=True, default=None)
-    rows_sent = models.IntegerField(blank=True, null=True, default=None)
-    rows_examined = models.IntegerField(blank=True, null=True, default=None)
+    rows_sent = models.DecimalField(
+        max_digits=24, decimal_places=0,
+        blank=True, null=True, default=None)
+    rows_examined = models.DecimalField(
+        max_digits=24, decimal_places=0,
+        blank=True, null=True, default=None)
+    rows_affected = models.DecimalField(
+        max_digits=24, decimal_places=0,
+        blank=True, null=True, default=None)
+    rows_read = models.DecimalField(
+        max_digits=24, decimal_places=0,
+        blank=True, null=True, default=None)
+    bytes_sent = models.DecimalField(
+        max_digits=24, decimal_places=0,
+        blank=True, null=True, default=None)
+    tmp_tables = models.DecimalField(
+        max_digits=24, decimal_places=0,
+        blank=True, null=True, default=None)
+    tmp_disk_tables = models.DecimalField(
+        max_digits=24, decimal_places=0,
+        blank=True, null=True, default=None)
+    tmp_table_sizes = models.DecimalField(
+        max_digits=24, decimal_places=0,
+        blank=True, null=True, default=None)
+
     sequence_id = models.IntegerField(unique=True)
     last_updated = models.DateTimeField(
         db_index=True, auto_now_add=True, auto_now=True)
@@ -37,8 +60,14 @@ class StatementData(models.Model):
             u'lock_time={8}, '
             u'rows_sent={9}, '
             u'rows_examined={10}, '
-            u'sequence_id={11}, '
-            u'last_updated={12}'
+            u'rows_affected={11}, '
+            u'rows_read={12}, '
+            u'bytes_sent={13}, '
+            u'tmp_tables={14}, '
+            u'tmp_disk_tables={15}, '
+            u'tmp_table_sizes={16}, '
+            u'sequence_id={17}, '
+            u'last_updated={18}'
             u'>').format(
                 self.id,
                 self.dt,
@@ -51,6 +80,12 @@ class StatementData(models.Model):
                 self.lock_time,
                 self.rows_sent,
                 self.rows_examined,
+                self.rows_affected,
+                self.rows_read,
+                self.bytes_sent,
+                self.tmp_tables,
+                self.tmp_disk_tables,
+                self.tmp_table_sizes,
                 self.sequence_id,
                 self.last_updated)
 
