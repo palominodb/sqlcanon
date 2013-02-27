@@ -799,9 +799,15 @@ class SlowQueryLogProcessor(object):
                 # read statement
                 line = log_item_parser.parse_statement(line, source)
 
+                # TODO: do something about strings causing UnicodeDecodeError
+
                 print log_item_parser.statement
 
-                DataManager.save_data(log_item_parser)
+                try:
+                    DataManager.save_data(log_item_parser)
+                except Exception, e:
+                    print 'ERROR: {0}'.format(e)
+
             else:
                 line = source.readline()
 
