@@ -609,6 +609,9 @@ class QueryLogItemParser(object):
         self.rows_examined = None
         self.statement = None
 
+        self.line_header_data = []
+        self.header_data = {}
+
     def parse_statement(self, lines_to_parse):
         self.statement = lines_to_parse.strip(' ;')
         return self.statement
@@ -1255,6 +1258,9 @@ class GeneralQueryLogItemParser(object):
         self.rows_sent = None
         self.rows_examined = None
         self.statement = None
+
+        self.line_header_data = []
+        self.header_data = {}
 
         self._full_query_pattern = re.compile(
             GeneralQueryLogItemParser.QUERY_LOG_PATTERN_FULL_QUERY)
