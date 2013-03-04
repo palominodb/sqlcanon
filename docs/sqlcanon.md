@@ -104,6 +104,11 @@ optional arguments:
                         interface to sniff from (default: lo0)
   -f FILTER, --filter FILTER
                         pcap-filter (default: dst port 3306)
+  --encoding ENCODING   String encoding. (default: utf_8)
+  --encoding-errors {strict,ignore,replace}
+                        String encoding error handling scheme. (default:
+                        replace)
+
 ```
 
 ### Processing MySQL slow query log
