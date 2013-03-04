@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+import codecs
 import datetime
 import getpass
 import itertools
@@ -10,7 +11,6 @@ import os
 import re
 import socket
 import sys
-from sys import stdin
 import tempfile
 import time
 import traceback
@@ -556,12 +556,12 @@ def canonicalize_statement(statement):
         if stmt.get_type() == 'INSERT':
             #print 'stmt.get_type() => {0}'.format(stmt.get_type())
             stmt_normalized, stmt_canonicalized, stmt_values = canonicalizer_statement_insert(stmt)
-            result.append(('{0}'.format(stmt), stmt_normalized, stmt_canonicalized, stmt_values))
+            result.append((u'{0}'.format(stmt), stmt_normalized, stmt_canonicalized, stmt_values))
             continue
         elif stmt.get_type() == STATEMENT_UNKNOWN:
             #print 'UNKNOWN: => {0} <='.format(stmt)
             result.append(
-                ('{0}'.format(stmt), '{0}'.format(stmt), STATEMENT_UNKNOWN, [])
+                (u'{0}'.format(stmt), u'{0}'.format(stmt), STATEMENT_UNKNOWN, [])
             )
             continue
 
@@ -589,7 +589,7 @@ def canonicalize_statement(statement):
         canonicalized = canonicalized.strip(' ;')
 
         result.append((
-            '{0}'.format(stmt),
+            u'{0}'.format(stmt),
             normalized,
             canonicalized,
             values))
@@ -765,6 +765,14 @@ class SlowQueryLogItemParser(object):
         return line
 
 
+def get_unicode_string(s):
+    try:
+        return s.decode(ARGS.encoding, ARGS.encoding_errors)
+    except Exception, e:
+        print 'Exception type: {0}, text: {1}'.format(type(e), e)
+        return s
+
+
 class SlowQueryLogProcessor(object):
     """Encapsulates operations on MySQL slow query log."""
 
@@ -780,7 +788,7 @@ class SlowQueryLogProcessor(object):
             if not line:
                 break
 
-            if line.rstrip().endswith('started with:'):
+            if line.rstrip().endswith(u'started with:'):
                 # ignore current and the next two lines
                 line = source.readline()
                 line = source.readline()
@@ -802,14 +810,13 @@ class SlowQueryLogProcessor(object):
                 # read statement
                 line = log_item_parser.parse_statement(line, source)
 
-                # TODO: do something about strings causing UnicodeDecodeError
-
                 print log_item_parser.statement
 
                 try:
                     DataManager.save_data(log_item_parser)
                 except Exception, e:
                     print 'ERROR: {0}'.format(e)
+                    traceback.print_exc()
 
             else:
                 line = source.readline()
@@ -1076,7 +1083,7 @@ class ServerData:
             canonicalized_statement, canonicalized_statement_hash,
             canonicalized_statement_hostname_hash,
             header_data):
-        params = dict(
+        data = dict(
             statement=statement,
             hostname=hostname,
             canonicalized_statement=canonicalized_statement,
@@ -1090,10 +1097,15 @@ class ServerData:
             'tmp_tables', 'tmp_disk_tables', 'tmp_table_sizes')
         for k in header_data_keys:
             if k in header_data:
-                params[k] = header_data[k]
+                data[k] = header_data[k]
 
-        urlencoded_params = urllib.urlencode(params)
+        # urllib doesnt like unicode objects so we pack our data
+        # in a json string
+        data_json = json.dumps(data)
+        params = dict(data=data_json)
+
         try:
+            urlencoded_params = urllib.urlencode(params)
             response = url_request(
                 ARGS.server_base_url + ARGS.save_statement_data_path,
                 data=urlencoded_params)
@@ -1104,14 +1116,19 @@ class ServerData:
     @staticmethod
     def save_explained_statement(
             statement_data_id, explain_rows, db=None):
-        params = dict(
+        data = dict(
             statement_data_id=statement_data_id,
             explain_rows=json.dumps(explain_rows),
         )
         if db:
-            params['db'] = db
-        urlencoded_params = urllib.urlencode(params)
+            data['db'] = db
+
+        # urllib doesn't like unicode objects so we pack our data
+        # inside a json string
+        data_json = json.dumps(data)
+        params = dict(data=data_json)
         try:
+            urlencoded_params = urllib.urlencode(params)
             response = url_request(
                 ARGS.server_base_url + ARGS.save_explained_statement_path,
                 data=urlencoded_params)
@@ -1506,6 +1523,16 @@ def main():
     parser.add_argument(
         '-f', '--filter', help='pcap-filter', default='dst port 3306',)
 
+    parser.add_argument(
+        '--encoding',
+        help='String encoding.',
+        default='utf_8')
+    parser.add_argument(
+        '--encoding-errors',
+        help='String encoding error handling scheme.',
+        choices=('strict', 'ignore', 'replace'),
+        default='replace')
+
     global ARGS
     ARGS = parser.parse_args()
 
@@ -1556,30 +1583,36 @@ def main():
                 'MySQL slow query log file = {0}'
                 .format(ARGS.file))
             slow_query_log_processor = SlowQueryLogProcessor()
-            with open(ARGS.file) as f:
+            with codecs.open(ARGS.file, encoding=ARGS.encoding,
+                    errors=ARGS.encoding_errors) as f:
                 slow_query_log_processor.process_log_contents(f)
 
         elif is_file_slow_query_log and not ARGS.file:
             print 'Reading MySQL slow query log from stdin...'
             query_log_processor = SlowQueryLogProcessor()
-            query_log_processor.process_log_contents(stdin)
+            f = codecs.getreader(ARGS.encoding)(
+                sys.stdin, errors=ARGS.encoding_errors)
+            query_log_processor.process_log_contents(f)
 
         elif is_file_general_query_log and ARGS.file:
             print (
                 'MySQL general query log file = {0}'
                 .format(ARGS.file))
             query_log_processor = GeneralQueryLogProcessor()
-            with open(ARGS.file) as f:
+            with codecs.open(ARGS.file, encoding=ARGS.encoding,
+                    errors=ARGS.encoding_errors) as f:
                 query_log_processor.process_log_contents(f)
 
         elif is_file_general_query_log and not ARGS.file :
             print 'Reading MySQL general query log from stdin...'
             query_log_processor = GeneralQueryLogProcessor()
-            query_log_processor.process_log_contents(stdin)
+            f = codecs.getreader(ARGS.encoding)(
+                sys.stdin, errors=ARGS.encoding_errors)
+            query_log_processor.process_log_contents(f)
 
     except Exception, e:
         print 'An error has occurred: {0}'.format(e)
-        traceback.print_exc()
+        #traceback.print_exc()
 
 
 if __name__ == '__main__':

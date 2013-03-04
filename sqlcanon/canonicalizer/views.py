@@ -23,9 +23,11 @@ def save_explained_statement(request):
     """Saves explain data."""
 
     def post_vars(post):
-        statement_data_id = int(post.get('statement_data_id'))
-        explain_rows = simplejson.loads(post.get('explain_rows'))
-        db = post.get('db')
+        data = simplejson.loads(post.get('data'))
+
+        statement_data_id = int(data.get('statement_data_id'))
+        explain_rows = simplejson.loads(data.get('explain_rows'))
+        db = data.get('db')
 
         return (
             statement_data_id,
@@ -61,35 +63,37 @@ def save_statement_data(request):
     def get_post_vars(post):
         """Returns variables from request post."""
 
+        data = simplejson.loads(post.get('data'))
+
         v = {}
-        v['statement'] = post.get('statement')
-        v['hostname'] = post.get('hostname')
-        v['canonicalized_statement'] = post.get(
+        v['statement'] = data.get('statement')
+        v['hostname'] = data.get('hostname')
+        v['canonicalized_statement'] = data.get(
             'canonicalized_statement')
-        v['canonicalized_statement_hash'] = int(post.get(
+        v['canonicalized_statement_hash'] = int(data.get(
             'canonicalized_statement_hash'))
         v['canonicalized_statement_hostname_hash'] = int(
-            post.get('canonicalized_statement_hostname_hash'))
-        if 'query_time' in post:
-            v['query_time'] = float(post.get('query_time'))
-        if 'lock_time' in post:
-            v['lock_time'] = float(post.get('lock_time'))
-        if 'rows_sent' in post:
-            v['rows_sent'] = decimal.Decimal(post.get('rows_sent'))
-        if 'rows_examined' in post:
-            v['rows_examined'] = decimal.Decimal(post.get('rows_examined'))
-        if 'rows_affected' in post:
-            v['rows_affected'] = decimal.Decimal(post.get('rows_affected'))
-        if 'rows_read' in post:
-            v['rows_read'] = decimal.Decimal(post.get('rows_read'))
-        if 'bytes_sent' in post:
-            v['bytes_sent'] = decimal.Decimal(post.get('bytes_sent'))
-        if 'tmp_tables' in post:
-            v['tmp_tables'] = decimal.Decimal(post.get('tmp_tables'))
-        if 'tmp_disk_tables' in post:
-            v['tmp_disk_tables'] = decimal.Decimal(post.get('tmp_disk_tables'))
-        if 'tmp_table_sizes' in post:
-            v['tmp_table_sizes'] = decimal.Decimal(post.get('tmp_table_sizes'))
+            data.get('canonicalized_statement_hostname_hash'))
+        if 'query_time' in data:
+            v['query_time'] = float(data.get('query_time'))
+        if 'lock_time' in data:
+            v['lock_time'] = float(data.get('lock_time'))
+        if 'rows_sent' in data:
+            v['rows_sent'] = decimal.Decimal(data.get('rows_sent'))
+        if 'rows_examined' in data:
+            v['rows_examined'] = decimal.Decimal(data.get('rows_examined'))
+        if 'rows_affected' in data:
+            v['rows_affected'] = decimal.Decimal(data.get('rows_affected'))
+        if 'rows_read' in data:
+            v['rows_read'] = decimal.Decimal(data.get('rows_read'))
+        if 'bytes_sent' in data:
+            v['bytes_sent'] = decimal.Decimal(data.get('bytes_sent'))
+        if 'tmp_tables' in data:
+            v['tmp_tables'] = decimal.Decimal(data.get('tmp_tables'))
+        if 'tmp_disk_tables' in data:
+            v['tmp_disk_tables'] = decimal.Decimal(data.get('tmp_disk_tables'))
+        if 'tmp_table_sizes' in data:
+            v['tmp_table_sizes'] = decimal.Decimal(data.get('tmp_table_sizes'))
         return v
 
     # store here the statements that needs to be EXPLAINed
