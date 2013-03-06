@@ -1550,13 +1550,13 @@ def print_top_queries(n):
             """
             SELECT
                 canonicalized_statement,
-                hostname,
+                server_id,
                 canonicalized_statement_hostname_hash,
                 COUNT(id)
-            FROM statementdata
+            FROM statements
             GROUP BY
                 canonicalized_statement,
-                hostname,
+                server_id,
                 canonicalized_statement_hostname_hash
             ORDER BY COUNT(id) DESC
             LIMIT ?
@@ -1564,6 +1564,7 @@ def print_top_queries(n):
         rows = cur.fetchall()
 
         print 'Top {0} Queries:'.format(n)
+        print 'Columns: canonicalized_statement_hostname_hash, COUNT(id), canonicalized_statement'
         for row in rows:
             print '{0} | {1} | {2}'.format(
                 int_to_hex_str(row[2]), str(row[3]).rjust(4), row[0])
@@ -1583,17 +1584,17 @@ def local_run_last_statements(window_length):
                     """
                     SELECT
                         canonicalized_statement,
-                        hostname,
+                        server_id,
                         canonicalized_statement_hostname_hash,
                         canonicalized_statement_hash,
                         statement,
                         MAX(dt),
                         COUNT(dt)
-                    FROM statementdata
+                    FROM statements
                     WHERE (dt>=?) AND (dt<=?)
                     GROUP BY
                         canonicalized_statement,
-                        hostname,
+                        server_id,
                         canonicalized_statement_hostname_hash,
                         canonicalized_statement_hash,
                         statement
@@ -1619,10 +1620,11 @@ def local_run_last_statements(window_length):
                     'Statements found in the last {0} minute(s): '
                     '{1} statement(s)').format(
                     window_length, row_count)
+                print 'Columns: datetime, canonicalized_statement_hostname_hash, count, statement'
                 for row in rows:
                     canonicalized_statement_hostname_hash = row[2]
                     count = counts[canonicalized_statement_hostname_hash]
-                    print '{0} | {1} | {2} | {3} '.format(
+                    print u'{0} | {1} | {2} | {3} '.format(
                         row[5], int_to_hex_str(row[2]), str(count).rjust(4),
                         row[4])
                 print
