@@ -46,8 +46,8 @@ def save_explained_statement(request):
 
         ret = simplejson.dumps(rv)
     except Exception, e:
-        LOGGER.exception('{0}'.format(e))
-        ret = simplejson.dumps(dict(error='{0}'.format(e)))
+        LOGGER.exception(u'{0}'.format(e))
+        ret = simplejson.dumps(dict(error=u'{0}'.format(e)))
     return HttpResponse(ret, mimetype='application/json')
 
 
@@ -62,7 +62,7 @@ def save_statement_data(request):
         try:
             data = simplejson.loads(post_data)
         except:
-            LOGGER.error('Could not successfully convert the following data to JSON object: {0}'.format(post_data))
+            LOGGER.error(u'Could not successfully convert the following data to JSON object: {0}'.format(post_data))
             return None
 
         v = {}
@@ -137,8 +137,8 @@ def save_statement_data(request):
 
         ret = simplejson.dumps(dict(explain=explain))
     except Exception, e:
-        LOGGER.exception('{0}'.format(e))
-        ret = simplejson.dumps(dict(error='{0}'.format(e)))
+        LOGGER.exception(u'{0}'.format(e))
+        ret = simplejson.dumps(dict(error=u'{0}'.format(e)))
     return HttpResponse(ret, mimetype='application/json')
 
 
@@ -203,7 +203,7 @@ def last_statements(request, window_length,
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
     except Exception, e:
-        LOGGER.exception('{0}'.format(e))
+        LOGGER.exception(u'{0}'.format(e))
 
 
 def home(request, template='home.html'):
@@ -211,7 +211,7 @@ def home(request, template='home.html'):
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
     except Exception, e:
-        LOGGER.exception('{0}'.format(e))
+        LOGGER.exception(u'{0}'.format(e))
 
 
 def sparkline(request, data):
@@ -222,7 +222,7 @@ def sparkline(request, data):
         image.save(response, 'PNG')
         return response
     except Exception, e:
-        LOGGER.exception('{0}'.format(e))
+        LOGGER.exception(u'{0}'.format(e))
 
 
 def top_queries(request, n, template='canonicalizer/top_queries.html'):
@@ -240,4 +240,4 @@ def top_queries(request, n, template='canonicalizer/top_queries.html'):
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
     except Exception, e:
-        LOGGER.exception('{0}'.format(e))
+        LOGGER.exception(u'{0}'.format(e))

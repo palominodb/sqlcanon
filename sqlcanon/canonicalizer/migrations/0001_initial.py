@@ -10,7 +10,7 @@ class Migration(SchemaMigration):
     def forwards(self, orm):
         # Adding model 'StatementData'
         db.create_table(u'statements', (
-            ('id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+            ('id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('dt', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
             ('statement', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('server_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
@@ -35,7 +35,7 @@ class Migration(SchemaMigration):
 
         # Adding model 'ExplainedStatement'
         db.create_table(u'explained_statements', (
-            ('id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+            ('id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('dt', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
             ('statement', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('server_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
@@ -50,7 +50,7 @@ class Migration(SchemaMigration):
 
         # Adding model 'ExplainResult'
         db.create_table(u'explain_results', (
-            ('id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+            ('id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('explained_statement', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['canonicalizer.ExplainedStatement'], null=True, db_column='explained_statement_id', blank=True)),
             ('select_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
             ('select_type', self.gf('django.db.models.fields.TextField')(blank=True)),
@@ -88,7 +88,7 @@ class Migration(SchemaMigration):
             'created_at': ('django.db.models.fields.DateTimeField', [], {'auto_now_add': 'True', 'null': 'True', 'blank': 'True'}),
             'db': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'dt': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-            'id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'server_id': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'statement': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'updated_at': ('django.db.models.fields.DateTimeField', [], {'auto_now': 'True', 'auto_now_add': 'True', 'null': 'True', 'blank': 'True'})
@@ -98,7 +98,7 @@ class Migration(SchemaMigration):
             'created_at': ('django.db.models.fields.DateTimeField', [], {'auto_now_add': 'True', 'null': 'True', 'blank': 'True'}),
             'explained_statement': ('django.db.models.fields.related.ForeignKey', [], {'to': "orm['canonicalizer.ExplainedStatement']", 'null': 'True', 'db_column': "'explained_statement_id'", 'blank': 'True'}),
             'extra': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'key': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'key_len': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'possible_keys': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -118,7 +118,7 @@ class Migration(SchemaMigration):
             'canonicalized_statement_hostname_hash': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'created_at': ('django.db.models.fields.DateTimeField', [], {'auto_now_add': 'True', 'null': 'True', 'blank': 'True'}),
             'dt': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-            'id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'lock_time': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'query_time': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'rows_affected': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),

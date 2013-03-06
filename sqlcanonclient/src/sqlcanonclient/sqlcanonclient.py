@@ -836,11 +836,11 @@ class LocalData:
             cur = conn.cursor()
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS statementdata(
+                CREATE TABLE IF NOT EXISTS statements(
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     dt TEXT,
                     statement TEXT,
-                    hostname TEXT,
+                    server_id INT,
                     canonicalized_statement TEXT,
                     canonicalized_statement_hash INT,
                     canonicalized_statement_hostname_hash INT,
@@ -855,25 +855,28 @@ class LocalData:
                     tmp_disk_tables INT,
                     tmp_table_sizes INT,
                     sequence_id INT,
-                    last_updated TEXT
+                    created_at TEXT,
+                    updated_at TEXT
                 )
                 """)
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS explainedstatement(
+                CREATE TABLE IF NOT EXISTS explained_statements(
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     dt TEXT,
                     statement TEXT,
-                    hostname TEXT,
+                    server_id INT,
                     canonicalized_statement TEXT,
                     canonicalized_statement_hash INT,
                     canonicalized_statement_hostname_hash INT,
-                    db TEXT
+                    db TEXT,
+                    created_at TEXT,
+                    updated_at TEXT
                 )
                 """)
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS explainresult(
+                CREATE TABLE IF NOT EXISTS explain_results(
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     explained_statement_id INT,
                     select_id INT,
@@ -881,11 +884,13 @@ class LocalData:
                     `table` TEXT,
                     type TEXT,
                     possible_keys TEXT,
-                    key TEXT,
+                    `key` TEXT,
                     key_len INT,
                     ref TEXT,
                     rows INT,
-                    extra TEXT
+                    extra TEXT,
+                    created_at TEXT,
+                    updated_at TEXT
                 )
                 """)
             cur.close()
@@ -901,6 +906,8 @@ class LocalData:
         Statement data are stored as RRD.
         """
 
+        server_id = ARGS.server_id
+
         if dt is None:
             dt = datetime.datetime.now()
 
@@ -914,7 +921,7 @@ class LocalData:
             if is_select_statement:
                 cur.execute(
                     """
-                    SELECT COUNT(*) FROM statementdata
+                    SELECT COUNT(*) FROM statements
                     WHERE canonicalized_statement_hostname_hash=?
                     """, (canonicalized_statement_hostname_hash,))
                 row = cur.fetchone()
@@ -925,25 +932,25 @@ class LocalData:
 
             insert_sql = (
                 """
-                INSERT INTO statementdata(
-                    dt, statement, hostname,
+                INSERT INTO statements(
+                    dt, statement, server_id,
                     canonicalized_statement,
                     canonicalized_statement_hash,
                     canonicalized_statement_hostname_hash,
                     query_time, lock_time, rows_sent, rows_examined,
                     rows_affected, rows_read, bytes_sent,
                     tmp_tables, tmp_disk_tables, tmp_table_sizes,
-                    sequence_id, last_updated)
+                    sequence_id, created_at, updated_at)
                 VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)
             update_sql = (
                 """
-                UPDATE statementdata
+                UPDATE statements
                 SET
                     dt = ?,
                     statement = ?,
-                    hostname = ?,
+                    server_id = ?,
                     canonicalized_statement = ?,
                     canonicalized_statement_hash = ?,
                     canonicalized_statement_hostname_hash = ?,
@@ -957,15 +964,15 @@ class LocalData:
                     tmp_tables = ?,
                     tmp_disk_tables = ?,
                     tmp_table_sizes = ?,
-                    last_updated = ?
+                    updated_at = ?
                 WHERE sequence_id = ?
                 """)
 
             # calculate the next sequence id to use
             cur.execute(
                 """
-                SELECT sequence_id FROM statementdata
-                ORDER BY last_updated DESC
+                SELECT sequence_id FROM statements
+                ORDER BY updated_at DESC, sequence_id DESC
                 """)
             row = cur.fetchone()
             if row:
@@ -976,41 +983,44 @@ class LocalData:
 
             cur.execute(
                 """
-                SELECT COUNT(*) FROM statementdata WHERE sequence_id = ?
+                SELECT COUNT(*) FROM statements WHERE sequence_id = ?
                 """, (sequence_id, ))
             row = cur.fetchone()
-            last_updated = datetime.datetime.now()
+            created_at = datetime.datetime.now()
+            updated_at = datetime.datetime.now()
             header_data_keys = (
                 'query_time', 'lock_time', 'rows_sent',
                 'rows_examined', 'rows_affected', 'rows_read',
                 'bytes_sent', 'tmp_tables', 'tmp_disk_tables',
                 'tmp_table_sizes')
             data = [
-                dt, statement, hostname,
+                dt, statement, server_id,
                 canonicalized_statement,
                 canonicalized_statement_hash,
                 canonicalized_statement_hostname_hash]
             data.extend(
                 [header_data.get(k) for k in header_data_keys])
             if row and int(row[0]):
-                data.extend((last_updated, sequence_id))
+                data.extend((updated_at, sequence_id))
                 cur.execute(update_sql, data)
             else:
-                data.extend((sequence_id, last_updated))
+                data.extend((sequence_id, created_at, updated_at))
                 cur.execute(insert_sql, data)
 
             # run an explain if first seen
             if first_seen:
                 cur.execute(
                     """
-                    SELECT dt, statement, hostname, canonicalized_statement,
+                    SELECT dt, statement, server_id, canonicalized_statement,
                         canonicalized_statement_hash,
                         canonicalized_statement_hostname_hash
-                    FROM statementdata
+                    FROM statements
                     WHERE sequence_id=?
                     """, (sequence_id, ))
                 statement_data_row = list(cur.fetchone())
                 statement_data_row.append(DataManager.get_last_db_used())
+                statement_data_row.append(created_at)
+                statement_data_row.append(updated_at)
 
                 try:
                     mysql_conn = MySQLdb.connect(
@@ -1020,13 +1030,13 @@ class LocalData:
 
                         cur.execute(
                             """
-                            INSERT INTO explainedstatement(
-                                dt, statement, hostname,
+                            INSERT INTO explained_statements(
+                                dt, statement, server_id,
                                 canonicalized_statement,
                                 canonicalized_statement_hash,
                                 canonicalized_statement_hostname_hash,
-                                db)
-                            VALUES (?,?,?,?,?,?,?)
+                                db, created_at, updated_at)
+                            VALUES (?,?,?,?,?,?,?,?,?)
                             """, statement_data_row)
                         explained_statement_id = cur.lastrowid
 
@@ -1034,7 +1044,7 @@ class LocalData:
                             explain_rows = DataManager.run_explain(
                                 statement, mysql_cur)
                             for explain_row in explain_rows:
-                                values = (
+                                values = [
                                     explained_statement_id,
                                     explain_row['select_id'],
                                     explain_row['select_type'],
@@ -1045,10 +1055,12 @@ class LocalData:
                                     explain_row['key_len'],
                                     explain_row['ref'],
                                     explain_row['rows'],
-                                    explain_row['extra'])
+                                    explain_row['extra']]
+                                values.append(created_at)
+                                values.append(updated_at)
                                 cur.execute(
                                     """
-                                    INSERT INTO explainresult(
+                                    INSERT INTO explain_results(
                                         explained_statement_id,
                                         select_id,
                                         select_type,
@@ -1059,9 +1071,10 @@ class LocalData:
                                         key_len,
                                         ref,
                                         rows,
-                                        extra)
+                                        extra,
+                                        created_at, updated_at)
                                     VALUES
-                                        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
                                     """, values)
 
                         except Exception, e:

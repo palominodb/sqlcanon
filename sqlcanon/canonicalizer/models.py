@@ -4,7 +4,6 @@ import canonicalizer.utils as app_utils
 
 
 class StatementData(models.Model):
-    id = models.IntegerField(primary_key=True)
     dt = models.DateTimeField(null=True, blank=True)
     statement = models.TextField(blank=True)
 
@@ -189,7 +188,6 @@ class ExplainedStatement(models.Model):
         Most fields in here are copied from StatementData.
         StatementData is currently stored as RRD so we can't just FK to it.
     """
-    id = models.IntegerField(primary_key=True)
     dt = models.DateTimeField(null=True, blank=True)
     statement = models.TextField(blank=True)
 
@@ -291,8 +289,6 @@ class ExplainedStatement(models.Model):
 
 
 class ExplainResult(models.Model):
-    id = models.IntegerField(primary_key=True)
-
     #explained_statement_id = models.IntegerField(null=True, blank=True)
     explained_statement = models.ForeignKey(ExplainedStatement, db_column='explained_statement_id', null=True, blank=True)
 
