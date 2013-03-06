@@ -151,7 +151,7 @@ def last_statements(request, window_length,
             .filter(dt__gte=dt_start, dt__lte=dt)
             .values(
                 'canonicalized_statement',
-                'hostname',
+                'server_id',
                 'canonicalized_statement_hostname_hash',
                 'canonicalized_statement_hash',
                 'statement')
@@ -231,7 +231,7 @@ def top_queries(request, n, template='canonicalizer/top_queries.html'):
             app_models.StatementData.objects
             .values(
                 'canonicalized_statement',
-                'hostname',
+                'server_id',
                 'canonicalized_statement_hostname_hash')
             .annotate(Count('id')).order_by('-id__count')[:n])
 

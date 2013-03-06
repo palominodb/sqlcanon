@@ -10,14 +10,14 @@
             <th>Instances</th>
             <th>Hash</th>
             <th>Statement</th>
-            <th>Hostname</th>
+            <th>Server ID</th>
         </tr>
         {% for statement_data in statement_data_qs %}
             <tr>
                 <td>{{ statement_data.id__count }}</td>
                 <td>{{ statement_data.canonicalized_statement_hostname_hash|hex_str }}</td>
                 <td>{{ statement_data.canonicalized_statement }}</td>
-                <td>{{ statement_data.hostname }}</td>
+                <td>{{ statement_data.server_id }}</td>
 
             </tr>
         {% endfor %}

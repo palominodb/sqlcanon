@@ -12,7 +12,7 @@
             <th>Count</th>
             <th>Hash</th>
             <th>&nbsp;</th>
-            <th>Hostname</th>
+            <th>Server ID</th>
             <th>Statement</th>
         </tr>
 
@@ -28,7 +28,7 @@
             <td>
                 <img src="{% url canonicalizer_sparkline sparkline_data %}"
                      alt="Data: {{ sparkline_data }}"/></td>
-            <td>{{ statement.hostname }}</td>
+            <td>{{ statement.server_id }}</td>
             <td>{{ statement.statement }}</td>
         </tr>
 
