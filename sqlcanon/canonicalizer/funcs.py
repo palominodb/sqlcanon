@@ -1,4 +1,5 @@
 """This file contains app business rules."""
+import logging
 
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
@@ -6,25 +7,30 @@ from django.core.exceptions import ObjectDoesNotExist
 import canonicalizer.models as app_models
 
 
-def save_explained_statement(statement_data_id, explain_rows, db=None):
+LOGGER = logging.getLogger(__name__)
+
+
+def save_explained_statement(**kwargs):
     """Saves explain results."""
 
-    statement_data = app_models.StatementData.objects.get(
-        pk=statement_data_id)
+    statement_data_id = kwargs.get('statement_data_id')
+    explain_rows = kwargs.get('explain_rows')
+    db = kwargs.get('db')
+    server_id = kwargs.get('server_id')
+
+    statement_data = app_models.StatementData.objects.get(pk=statement_data_id)
     explained_statement = app_models.ExplainedStatement.objects.create(
         dt=statement_data.dt,
         statement=statement_data.statement,
-        hostname=statement_data.hostname,
+        server_id=statement_data.server_id,
         canonicalized_statement=statement_data.canonicalized_statement,
-        canonicalized_statement_hash=
-            statement_data.canonicalized_statement_hash,
-        canonicalized_statement_hostname_hash=
-            statement_data.canonicalized_statement_hostname_hash,
+        canonicalized_statement_hash=statement_data.canonicalized_statement_hash,
+        canonicalized_statement_hostname_hash=statement_data.canonicalized_statement_hostname_hash,
         db=db)
+
     for explain_row in explain_rows:
-        app_models.ExplainResult.objects.create(
-            explained_statement=explained_statement,
-            **explain_row)
+        app_models.ExplainResult.objects.create(explained_statement=explained_statement, **explain_row)
+
     return explained_statement
 
 
@@ -34,7 +40,7 @@ def save_statement_data(**kwargs):
     Statement data are stored as RRD.
     """
 
-    qs = app_models.StatementData.objects.order_by('-last_updated')[:1]
+    qs = app_models.StatementData.objects.order_by('-updated_at', '-sequence_id')[:1]
     statement_data = None
     if qs:
         statement_data = qs[0]
@@ -49,7 +55,7 @@ def save_statement_data(**kwargs):
             sequence_id=sequence_id)
         statement_data.dt = kwargs.get('dt')
         statement_data.statement = kwargs.get('statement')
-        statement_data.hostname = kwargs.get('hostname')
+        statement_data.server_id = kwargs.get('server_id')
         statement_data.canonicalized_statement = (
             kwargs.get('canonicalized_statement'))
         statement_data.canonicalized_statement_hash = (
@@ -67,11 +73,12 @@ def save_statement_data(**kwargs):
         statement_data.tmp_disk_tables = kwargs.get('tmp_disk_tables')
         statement_data.tmp_table_sizes = kwargs.get('tmp_table_sizes')
         statement_data.save()
+
     except ObjectDoesNotExist:
         statement_data = app_models.StatementData.objects.create(
             dt=kwargs.get('dt'),
             statement=kwargs.get('statement'),
-            hostname=kwargs.get('hostname'),
+            server_id=kwargs.get('server_id'),
             canonicalized_statement=
                 kwargs.get('canonicalized_statement'),
             canonicalized_statement_hash=

@@ -28,26 +28,21 @@ def save_explained_statement(request):
         statement_data_id = int(data.get('statement_data_id'))
         explain_rows = simplejson.loads(data.get('explain_rows'))
         db = data.get('db')
+        server_id = int(data.get('server_id'))
 
-        return (
-            statement_data_id,
-            explain_rows,
-            db)
+        return dict(
+            statement_data_id=statement_data_id,
+            explain_rows=explain_rows,
+            db=db,
+            server_id=server_id)
 
     rv = {}
     try:
         if request.method == 'POST':
             post_vars_packed = post_vars(request.POST)
-            (
-                statement_data_id,
-                explain_rows,
-                db
-            ) = post_vars_packed
-            LOGGER.debug('post_vars_packed = {0}'.format(post_vars_packed))
+            #LOGGER.debug('post_vars_packed = {0}'.format(post_vars_packed))
             explained_statement = app_funcs.save_explained_statement(
-                statement_data_id,
-                explain_rows,
-                db)
+                **post_vars_packed)
 
         ret = simplejson.dumps(rv)
     except Exception, e:
@@ -63,7 +58,12 @@ def save_statement_data(request):
     def get_post_vars(post):
         """Returns variables from request post."""
 
-        data = simplejson.loads(post.get('data'))
+        post_data = post.get('data')
+        try:
+            data = simplejson.loads(post_data)
+        except:
+            LOGGER.error('Could not successfully convert the following data to JSON object: {0}'.format(post_data))
+            return None
 
         v = {}
         v['statement'] = data.get('statement')
@@ -79,59 +79,61 @@ def save_statement_data(request):
         if 'lock_time' in data:
             v['lock_time'] = float(data.get('lock_time'))
         if 'rows_sent' in data:
-            v['rows_sent'] = decimal.Decimal(data.get('rows_sent'))
+            v['rows_sent'] = int(data.get('rows_sent'))
         if 'rows_examined' in data:
-            v['rows_examined'] = decimal.Decimal(data.get('rows_examined'))
+            v['rows_examined'] = int(data.get('rows_examined'))
         if 'rows_affected' in data:
-            v['rows_affected'] = decimal.Decimal(data.get('rows_affected'))
+            v['rows_affected'] = int(data.get('rows_affected'))
         if 'rows_read' in data:
-            v['rows_read'] = decimal.Decimal(data.get('rows_read'))
+            v['rows_read'] = int(data.get('rows_read'))
         if 'bytes_sent' in data:
-            v['bytes_sent'] = decimal.Decimal(data.get('bytes_sent'))
+            v['bytes_sent'] = int(data.get('bytes_sent'))
         if 'tmp_tables' in data:
-            v['tmp_tables'] = decimal.Decimal(data.get('tmp_tables'))
+            v['tmp_tables'] = int(data.get('tmp_tables'))
         if 'tmp_disk_tables' in data:
-            v['tmp_disk_tables'] = decimal.Decimal(data.get('tmp_disk_tables'))
+            v['tmp_disk_tables'] = int(data.get('tmp_disk_tables'))
         if 'tmp_table_sizes' in data:
-            v['tmp_table_sizes'] = decimal.Decimal(data.get('tmp_table_sizes'))
+            v['tmp_table_sizes'] = int(data.get('tmp_table_sizes'))
+        if 'server_id' in data:
+            v['server_id'] = int(data.get('server_id'))
+
         return v
 
     # store here the statements that needs to be EXPLAINed
     explain = []
     try:
         if request.method == 'POST':
+            #LOGGER.debug(u'request.POST={0}'.format(request.POST))
+
             post_vars = get_post_vars(request.POST)
 
-            post_vars['dt'] = timezone.now()
+            if post_vars:
+                post_vars['dt'] = timezone.now()
 
-            LOGGER.debug('post_vars={0}'.format(post_vars))
+                #LOGGER.debug(u'post_vars={0}'.format(post_vars))
 
-            statement = post_vars.get('statement')
-            canonicalized_statement = post_vars.get(
-                'canonicalized_statement')
-            canonicalized_statement_hostname_hash = post_vars.get(
-                'canonicalized_statement_hostname_hash')
+                statement = post_vars.get('statement')
+                canonicalized_statement = post_vars.get('canonicalized_statement')
+                canonicalized_statement_hostname_hash = post_vars.get('canonicalized_statement_hostname_hash')
 
-            is_select_statement = canonicalized_statement.startswith(
-                'SELECT ')
-            first_seen = False
-            if is_select_statement:
-                count = (app_models.StatementData.objects.filter(
-                    canonicalized_statement_hostname_hash=
-                        canonicalized_statement_hostname_hash)
-                    .count())
+                is_select_statement = canonicalized_statement.startswith('SELECT ')
 
-                # first_seen is set to True, if this is the first time
-                # we saw this statement
-                first_seen = not count
+                first_seen = False
+                if is_select_statement:
+                    count = (app_models.StatementData.objects.filter(
+                        canonicalized_statement_hostname_hash=canonicalized_statement_hostname_hash)
+                        .count())
 
-            statement_data = app_funcs.save_statement_data(
-                **post_vars)
+                    # first_seen is set to True, if this is the first time
+                    # we saw this statement
+                    first_seen = not count
 
-            if first_seen:
-                explain.append(dict(
-                    statement=statement,
-                    statement_data_id=statement_data.id))
+                statement_data = app_funcs.save_statement_data(**post_vars)
+
+                if first_seen:
+                    explain.append(dict(
+                        statement=statement,
+                        statement_data_id=statement_data.id))
 
         ret = simplejson.dumps(dict(explain=explain))
     except Exception, e:

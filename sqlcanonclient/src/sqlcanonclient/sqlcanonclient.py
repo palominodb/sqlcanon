@@ -816,7 +816,7 @@ class SlowQueryLogProcessor(object):
                     DataManager.save_data(log_item_parser)
                 except Exception, e:
                     print 'ERROR: {0}'.format(e)
-                    traceback.print_exc()
+                    #traceback.print_exc()
 
             else:
                 line = source.readline()
@@ -1083,6 +1083,7 @@ class ServerData:
             canonicalized_statement, canonicalized_statement_hash,
             canonicalized_statement_hostname_hash,
             header_data):
+
         data = dict(
             statement=statement,
             hostname=hostname,
@@ -1098,6 +1099,9 @@ class ServerData:
         for k in header_data_keys:
             if k in header_data:
                 data[k] = header_data[k]
+
+        # extra data
+        data['server_id'] = ARGS.server_id
 
         # urllib doesnt like unicode objects so we pack our data
         # in a json string
@@ -1122,6 +1126,8 @@ class ServerData:
         )
         if db:
             data['db'] = db
+
+        data['server_id'] = ARGS.server_id
 
         # urllib doesn't like unicode objects so we pack our data
         # inside a json string
@@ -1532,6 +1538,8 @@ def main():
         help='String encoding error handling scheme.',
         choices=('strict', 'ignore', 'replace'),
         default='replace')
+
+    parser.add_argument('--server-id', default=1, help='Server ID.')
 
     global ARGS
     ARGS = parser.parse_args()
