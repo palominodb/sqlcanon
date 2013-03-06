@@ -1,6 +1,7 @@
 import datetime
 import decimal
 import logging
+import pprint
 
 from django.conf import settings
 from django.db.models import Max, Count
@@ -39,6 +40,7 @@ def save_explained_statement(request):
     rv = {}
     try:
         if request.method == 'POST':
+            LOGGER.debug(u'\nrequest.POST:\n%s' % (pprint.pformat(request.POST)))
             post_vars_packed = post_vars(request.POST)
             #LOGGER.debug('post_vars_packed = {0}'.format(post_vars_packed))
             explained_statement = app_funcs.save_explained_statement(
@@ -68,34 +70,49 @@ def save_statement_data(request):
         v = {}
         v['statement'] = data.get('statement')
         v['hostname'] = data.get('hostname')
-        v['canonicalized_statement'] = data.get(
-            'canonicalized_statement')
-        v['canonicalized_statement_hash'] = int(data.get(
-            'canonicalized_statement_hash'))
-        v['canonicalized_statement_hostname_hash'] = int(
-            data.get('canonicalized_statement_hostname_hash'))
-        if 'query_time' in data:
+        v['canonicalized_statement'] = data.get('canonicalized_statement')
+
+        if 'canonicalized_statement_hash' in data and data['canonicalized_statement_hash']:
+            v['canonicalized_statement_hash'] = int(data['canonicalized_statement_hash'])
+
+        if 'canonicalized_statement_hostname_hash' in data and data['canonicalized_statement_hostname_hash']:
+            v['canonicalized_statement_hostname_hash'] = int(data['canonicalized_statement_hostname_hash'])
+
+        if 'query_time' in data and data['query_time']:
             v['query_time'] = float(data.get('query_time'))
-        if 'lock_time' in data:
+
+        if 'lock_time' in data and data['lock_time']:
             v['lock_time'] = float(data.get('lock_time'))
-        if 'rows_sent' in data:
+
+        if 'rows_sent' in data and data['rows_sent']:
             v['rows_sent'] = int(data.get('rows_sent'))
-        if 'rows_examined' in data:
+
+        if 'rows_examined' in data and data['rows_examined']:
             v['rows_examined'] = int(data.get('rows_examined'))
-        if 'rows_affected' in data:
+
+        if 'rows_affected' in data and data['rows_affected']:
             v['rows_affected'] = int(data.get('rows_affected'))
-        if 'rows_read' in data:
+
+        if 'rows_read' in data and data['rows_read']:
             v['rows_read'] = int(data.get('rows_read'))
-        if 'bytes_sent' in data:
+
+        if 'bytes_sent' in data and data['bytes_sent']:
             v['bytes_sent'] = int(data.get('bytes_sent'))
-        if 'tmp_tables' in data:
+
+        if 'tmp_tables' in data and data['tmp_tables']:
             v['tmp_tables'] = int(data.get('tmp_tables'))
-        if 'tmp_disk_tables' in data:
+
+        if 'tmp_disk_tables' in data and data['tmp_disk_tables']:
             v['tmp_disk_tables'] = int(data.get('tmp_disk_tables'))
-        if 'tmp_table_sizes' in data:
+
+        if 'tmp_table_sizes' in data and data['tmp_table_sizes']:
             v['tmp_table_sizes'] = int(data.get('tmp_table_sizes'))
+
         if 'server_id' in data:
             v['server_id'] = int(data.get('server_id'))
+
+        if 'schema' in data and data['schema'] and data['schema'].strip():
+            v['schema'] = data['schema'].strip()
 
         return v
 
@@ -103,9 +120,11 @@ def save_statement_data(request):
     explain = []
     try:
         if request.method == 'POST':
-            #LOGGER.debug(u'request.POST={0}'.format(request.POST))
+            LOGGER.debug(u'\nrequest.POST:\n%s' % (pprint.pformat(request.POST)))
 
             post_vars = get_post_vars(request.POST)
+
+            LOGGER.debug(u'\npost_vars:\n%s' % (pprint.pformat(post_vars)))
 
             if post_vars:
                 post_vars['dt'] = timezone.now()
@@ -116,7 +135,19 @@ def save_statement_data(request):
                 canonicalized_statement = post_vars.get('canonicalized_statement')
                 canonicalized_statement_hostname_hash = post_vars.get('canonicalized_statement_hostname_hash')
 
-                is_select_statement = canonicalized_statement.startswith('SELECT ')
+                #LOGGER.debug((
+                #    u'\n'
+                #    u'statement:\n'
+                #    u'%s\n'
+                #    u'canonicalized_statement:\n'
+                #    u'%s\n'
+                #    u'canonicalized_statement_hostname_hash: %s') % (
+                #        statement, canonicalized_statement, canonicalized_statement_hostname_hash)
+
+                if canonicalized_statement:
+                    is_select_statement = canonicalized_statement.startswith('SELECT ')
+                else:
+                    is_select_statement = False
 
                 first_seen = False
                 if is_select_statement:
@@ -128,12 +159,18 @@ def save_statement_data(request):
                     # we saw this statement
                     first_seen = not count
 
+                    LOGGER.debug(u'\nis_select_statement=%s\nfirst_seen=%s' % (
+                        is_select_statement, first_seen))
+
                 statement_data = app_funcs.save_statement_data(**post_vars)
 
                 if first_seen:
-                    explain.append(dict(
+                    explain_data = dict(
                         statement=statement,
-                        statement_data_id=statement_data.id))
+                        statement_data_id=statement_data.id)
+                    if 'schema' in post_vars and post_vars['schema'] and post_vars['schema'].strip():
+                        explain_data['schema'] = post_vars['schema'].strip()
+                    explain.append(explain_data)
 
         ret = simplejson.dumps(dict(explain=explain))
     except Exception, e:

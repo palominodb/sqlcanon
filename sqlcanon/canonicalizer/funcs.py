@@ -15,7 +15,7 @@ def save_explained_statement(**kwargs):
 
     statement_data_id = kwargs.get('statement_data_id')
     explain_rows = kwargs.get('explain_rows')
-    db = kwargs.get('db')
+    db = kwargs.get('db', '')
     server_id = kwargs.get('server_id')
 
     statement_data = app_models.StatementData.objects.get(pk=statement_data_id)
@@ -29,6 +29,11 @@ def save_explained_statement(**kwargs):
         db=db)
 
     for explain_row in explain_rows:
+        # fix null texts
+        for k in ['select_type', 'table', 'type', 'possible_keys', 'key', 'ref', 'extra']:
+            if k in explain_row:
+                if not explain_row[k]:
+                    explain_row[k] = ''
         app_models.ExplainResult.objects.create(explained_statement=explained_statement, **explain_row)
 
     return explained_statement
@@ -56,12 +61,9 @@ def save_statement_data(**kwargs):
         statement_data.dt = kwargs.get('dt')
         statement_data.statement = kwargs.get('statement')
         statement_data.server_id = kwargs.get('server_id')
-        statement_data.canonicalized_statement = (
-            kwargs.get('canonicalized_statement'))
-        statement_data.canonicalized_statement_hash = (
-            kwargs.get('canonicalized_statement_hash'))
-        statement_data.canonicalized_statement_hostname_hash = (
-            kwargs.get('canonicalized_statement_hostname_hash'))
+        statement_data.canonicalized_statement = kwargs.get('canonicalized_statement')
+        statement_data.canonicalized_statement_hash = kwargs.get('canonicalized_statement_hash')
+        statement_data.canonicalized_statement_hostname_hash = kwargs.get('canonicalized_statement_hostname_hash')
         statement_data.query_time = kwargs.get('query_time')
         statement_data.lock_time = kwargs.get('lock_time')
         statement_data.rows_sent = kwargs.get('rows_sent')
@@ -79,12 +81,9 @@ def save_statement_data(**kwargs):
             dt=kwargs.get('dt'),
             statement=kwargs.get('statement'),
             server_id=kwargs.get('server_id'),
-            canonicalized_statement=
-                kwargs.get('canonicalized_statement'),
-            canonicalized_statement_hash=
-                kwargs.get('canonicalized_statement_hash'),
-            canonicalized_statement_hostname_hash=
-                kwargs.get('canonicalized_statement_hostname_hash'),
+            canonicalized_statement=kwargs.get('canonicalized_statement'),
+            canonicalized_statement_hash=kwargs.get('canonicalized_statement_hash'),
+            canonicalized_statement_hostname_hash=kwargs.get('canonicalized_statement_hostname_hash'),
             query_time=kwargs.get('query_time'),
             lock_time=kwargs.get('lock_time'),
             rows_sent=kwargs.get('rows_sent'),

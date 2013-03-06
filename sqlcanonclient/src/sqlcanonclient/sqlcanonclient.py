@@ -28,7 +28,7 @@ import yaml
 
 STATEMENT_DATA_MAX_ROWS = 1024
 
-PP = pprint.PrettyPrinter(indent=4)
+pp = pprint.pprint
 
 STATEMENT_UNKNOWN = 'UNKNOWN'
 
@@ -145,7 +145,7 @@ class Options(object):
         self.stand_alone = args.stand_alone
         self.server_base_url = args.server_base_url
         self.save_statement_data_path = args.save_statement_data_path
-        self.save_explained_statement_path = args.save_statement_data_path
+        self.save_explained_statement_path = args.save_explained_statement_path
         self.explain_options = args.explain_options
         self.sniff = args.sniff
         self.local_run_last_statements = args.local_run_last_statements
@@ -180,7 +180,7 @@ class Options(object):
 
     def __str__(self):
         s = (
-            '<Options file=%s '
+            '<Options file=%s, '
             'type=%s, db=%s, stand_alone=%s, server_base_url=%s, '
             'save_statement_data_path=%s, save_explained_statement_path=%s, '
             'explain_options=%s, sniff=%s, local_run_last_statements=%s, '
@@ -199,7 +199,8 @@ class Options(object):
 
 
 OPTIONS = Options()
-#print OPTIONS
+print OPTIONS
+
 
 
 class url_request(object):
@@ -792,7 +793,8 @@ def process_packet(pktlen, data, timestamp):
         log_item_parser = QueryLogItemParser()
         if log_item_parser.parse_statement(payload):
             print log_item_parser.statement
-            DataManager.save_data(log_item_parser)
+            if log_item_parser.statement and log_item_parser.statement.strip():
+                DataManager.save_data(log_item_parser)
 
     except Exception, e:
         print 'ERROR: {0}'.format(e)
@@ -1266,7 +1268,7 @@ class ServerData:
         header_data_keys = (
             'query_time', 'lock_time', 'rows_sent', 'rows_examined',
             'rows_affected', 'rows_read', 'bytes_sent',
-            'tmp_tables', 'tmp_disk_tables', 'tmp_table_sizes')
+            'tmp_tables', 'tmp_disk_tables', 'tmp_table_sizes', 'schema')
         for k in header_data_keys:
             if k in header_data:
                 data[k] = header_data[k]
@@ -1290,13 +1292,15 @@ class ServerData:
 
     @staticmethod
     def save_explained_statement(
-            statement_data_id, explain_rows, db=None):
+            statement_data_id, explain_rows, db=''):
         data = dict(
             statement_data_id=statement_data_id,
             explain_rows=json.dumps(explain_rows),
         )
-        if db:
-            data['db'] = db
+
+        if db is None:
+            db = ''
+        data['db'] = db
 
         data['server_id'] = OPTIONS.server_id
 
@@ -1315,31 +1319,45 @@ class ServerData:
 
     @staticmethod
     def process_explain_requests(save_statement_data_response_content):
+        print 'process_explain_requests():'
         response = json.loads(save_statement_data_response_content)
         explain_items = response.get('explain', [])
+        print 'explain_items:'
+        pp(explain_items)
+        schema = response.get('schema')
+        print 'schema: %s' % (schema,)
         if explain_items:
-            conn = MySQLdb.connect(
-                **DataManager.get_explain_connection_options())
-            with conn:
-                cur = conn.cursor()
-                for explain_item in explain_items:
-                    statement = explain_item['statement']
-                    statement_data_id = explain_item['statement_data_id']
+            explain_connection_options = DataManager.get_explain_connection_options()
+            if schema:
+                explain_connection_options['db'] = schema
+            print 'explain_connection_options:'
+            pp(explain_connection_options)
+            try:
+                conn = MySQLdb.connect(**explain_connection_options)
+                with conn:
+                    cur = conn.cursor()
+                    for explain_item in explain_items:
+                        statement = explain_item['statement']
+                        statement_data_id = explain_item['statement_data_id']
 
-                    try:
-                        explain_rows = DataManager.run_explain(
-                            statement, cur)
+                        try:
+                            explain_rows = DataManager.run_explain(
+                                statement, cur)
+                            for row in explain_rows:
+                                pp(row )
 
-                        ServerData.save_explained_statement(
-                            statement_data_id,
-                            explain_rows,
-                            DataManager._last_db_used)
+                            ServerData.save_explained_statement(
+                                statement_data_id,
+                                explain_rows,
+                                explain_connection_options.get('db', ''))
 
-                    except Exception, e:
-                        print ((
-                            'ServerData.process_explain_requests() > '
-                            'error while running EXPLAIN: {0}')
-                            .format(e))
+                        except Exception, e:
+                            print ((
+                                'ServerData.process_explain_requests() > '
+                                'error while running EXPLAIN: {0}')
+                                .format(e))
+            except Exception, e:
+                print '%s: %s' % (type(e), e)
 
 
 class DataManager:
