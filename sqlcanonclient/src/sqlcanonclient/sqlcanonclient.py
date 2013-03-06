@@ -24,12 +24,11 @@ import MySQLdb
 import sqlite3
 import sqlparse
 from sqlparse.tokens import Token
+import yaml
 
 STATEMENT_DATA_MAX_ROWS = 1024
 
 PP = pprint.PrettyPrinter(indent=4)
-
-ARGS = None
 
 STATEMENT_UNKNOWN = 'UNKNOWN'
 
@@ -43,6 +42,165 @@ COLLAPSE_TARGET_PARTS = True
 HOSTNAME = socket.gethostname()
 
 EXPLAIN_OPTIONS = None
+
+
+class Options(object):
+    """Encapsulates merged options from command-line arguments and config file."""
+
+    def __init__(self):
+        super(Options, self).__init__()
+        self._load_options()
+
+    def _load_options(self):
+        self._load_options_from_args()
+        self._merge_options_from_config_file()
+
+    def _parse_command_line_args(self):
+        default_db = '%s/sqlcanonclient.db' % tempfile.gettempdir()
+
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+        parser.add_argument(
+            'file', nargs='?',
+            help='MySQL log file to open, if not specified stdin will be used.')
+        parser.add_argument(
+            '-t', '--type', choices='sg',
+            help='Log file format -- s: slow query log, g: general query log',
+            default='s',)
+
+        parser.add_argument(
+            '-d', '--db', help='database name', default=default_db)
+
+        parser.add_argument(
+            '-s', '--stand-alone',
+            action='store_true',
+            help='Run as stand alone (will not send data to server).')
+        parser.add_argument(
+            '--server-base-url',
+            help='Server base URL.',
+            default='http://localhost:8000')
+        parser.add_argument(
+            '--save-statement-data-path',
+            help='URL to be used for saving statement data.',
+            default='/save-statement-data/',)
+        parser.add_argument(
+            '--save-explained-statement-path',
+            help='URL to be used for saving explain statement.',
+            default='/save-explained-statement/',)
+        parser.add_argument(
+            '-e', '--explain-options',
+            help='Explain MySQL options: h=<host>,u=<user>,p=<passwd>,d=<db>',
+            default='h=127.0.0.1,u=root')
+
+        action = parser.add_mutually_exclusive_group()
+        action.add_argument(
+            '-l', '--sniff',
+            action='store_true', default=False,
+            help='launch packet sniffer')
+        action.add_argument(
+            '--local-run-last-statements', action='store_true',
+            help='In stand alone mode, prints last seen statements')
+        action.add_argument(
+            '--print-top-queries',
+            help='Prints top queries stored on local data.',
+            default=0)
+
+        # local-run-last-statements options
+        parser.add_argument(
+            '--sliding-window-length', type=int,
+            help='Length of period in number of minutes.',
+            default=5)
+
+        # packet sniffer options
+        parser.add_argument(
+            '-i', '--interface',
+            help='interface to sniff from', default='lo0')
+        parser.add_argument(
+            '-f', '--filter', help='pcap-filter', default='dst port 3306',)
+
+        parser.add_argument(
+            '--encoding',
+            help='String encoding.',
+            default='utf_8')
+        parser.add_argument(
+            '--encoding-errors',
+            help='String encoding error handling scheme.',
+            choices=('strict', 'ignore', 'replace'),
+            default='replace')
+
+        parser.add_argument('-S', '--server-id', default=1, help='Server ID.')
+
+        parser.add_argument('-C', '--config', help='Name of configuration file to use.')
+
+        self._args = parser.parse_args()
+        #print 'options_from_args: %s' % (self._args,)
+        return self._args
+
+    def _load_options_from_args(self):
+        args = self._parse_command_line_args()
+        self.file = args.file
+        self.type = args.type
+        self.db = args.db
+        self.stand_alone = args.stand_alone
+        self.server_base_url = args.server_base_url
+        self.save_statement_data_path = args.save_statement_data_path
+        self.save_explained_statement_path = args.save_statement_data_path
+        self.explain_options = args.explain_options
+        self.sniff = args.sniff
+        self.local_run_last_statements = args.local_run_last_statements
+        self.print_top_queries = args.print_top_queries
+        self.sliding_window_length = args.sliding_window_length
+        self.interface = args.interface
+        self.filter = args.filter
+        self.encoding = args.encoding
+        self.encoding_errors = args.encoding_errors
+        self.server_id = args.server_id
+        self.config = args.config
+
+    def _load_options_from_config_file(self):
+        assert self._args
+        self._config_file_options = None
+        if self._args.config:
+            with open(self._args.config) as f:
+                self._config_file_options = yaml.load(''.join(f.readlines()))
+        return self._config_file_options
+
+    def _merge_options_from_config_file(self):
+        fopts = self._load_options_from_config_file()
+        #print 'config_file_options: %s' % (fopts,)
+        if fopts:
+            for k, v in fopts.iteritems():
+                if hasattr(self, k):
+                    setattr(self, k, v)
+                    #print 'Updated option with value from config file: %s.' % (k,)
+                else:
+                    #print 'Unknown config file option: %s' % (k,)
+                    pass
+
+    def __str__(self):
+        s = (
+            '<Options file=%s '
+            'type=%s, db=%s, stand_alone=%s, server_base_url=%s, '
+            'save_statement_data_path=%s, save_explained_statement_path=%s, '
+            'explain_options=%s, sniff=%s, local_run_last_statements=%s, '
+            'print_top_queries=%s, sliding_window_length=%s, interface=%s, '
+            'filter=%s, encoding=%s, encoding_errors=%s, server_id=%s, '
+            'config=%s '
+            '>'
+            ) % (self.file,
+            self.type, self.db, self.stand_alone, self.server_base_url,
+            self.save_statement_data_path, self.save_explained_statement_path,
+            self.explain_options, self.sniff, self.local_run_last_statements,
+            self.print_top_queries, self.sliding_window_length, self.interface,
+            self.filter, self.encoding, self.encoding_errors, self.server_id,
+            self.config)
+        return s
+
+
+OPTIONS = Options()
+#print OPTIONS
+
 
 class url_request(object):
     """wrapper for urllib2"""
@@ -643,7 +801,7 @@ def process_packet(pktlen, data, timestamp):
 def run_packet_sniffer():
 
     p = pcap.pcapObject()
-    dev = ARGS.interface
+    dev = OPTIONS.interface
     net, mask = pcap.lookupnet(dev)
     print 'net:', net, 'mask:', mask
 
@@ -656,7 +814,7 @@ def run_packet_sniffer():
     # sample filter:
     #     dst port 3306
     # see: http://www.manpagez.com/man/7/pcap-filter/
-    p.setfilter(ARGS.filter, 0, 0)
+    p.setfilter(OPTIONS.filter, 0, 0)
 
     print 'Press CTRL+C to end capture'
     try:
@@ -767,7 +925,7 @@ class SlowQueryLogItemParser(object):
 
 def get_unicode_string(s):
     try:
-        return s.decode(ARGS.encoding, ARGS.encoding_errors)
+        return s.decode(OPTIONS.encoding, OPTIONS.encoding_errors)
     except Exception, e:
         print 'Exception type: {0}, text: {1}'.format(type(e), e)
         return s
@@ -906,7 +1064,7 @@ class LocalData:
         Statement data are stored as RRD.
         """
 
-        server_id = ARGS.server_id
+        server_id = OPTIONS.server_id
 
         if dt is None:
             dt = datetime.datetime.now()
@@ -1114,7 +1272,7 @@ class ServerData:
                 data[k] = header_data[k]
 
         # extra data
-        data['server_id'] = ARGS.server_id
+        data['server_id'] = OPTIONS.server_id
 
         # urllib doesnt like unicode objects so we pack our data
         # in a json string
@@ -1124,7 +1282,7 @@ class ServerData:
         try:
             urlencoded_params = urllib.urlencode(params)
             response = url_request(
-                ARGS.server_base_url + ARGS.save_statement_data_path,
+                OPTIONS.server_base_url + OPTIONS.save_statement_data_path,
                 data=urlencoded_params)
             return response
         except Exception, e:
@@ -1140,7 +1298,7 @@ class ServerData:
         if db:
             data['db'] = db
 
-        data['server_id'] = ARGS.server_id
+        data['server_id'] = OPTIONS.server_id
 
         # urllib doesn't like unicode objects so we pack our data
         # inside a json string
@@ -1149,7 +1307,7 @@ class ServerData:
         try:
             urlencoded_params = urllib.urlencode(params)
             response = url_request(
-                ARGS.server_base_url + ARGS.save_explained_statement_path,
+                OPTIONS.server_base_url + OPTIONS.save_explained_statement_path,
                 data=urlencoded_params)
             return response
         except Exception, e:
@@ -1222,7 +1380,7 @@ class DataManager:
         canonicalized_statement_hostname_hash,
         header_data):
 
-        if ARGS.stand_alone:
+        if OPTIONS.stand_alone:
             LocalData.save_statement_data(
                 dt, statement, hostname,
                 canonicalized_statement, canonicalized_statement_hash,
@@ -1477,158 +1635,79 @@ def local_run_last_statements(window_length):
         cur.close()
 
 
-
 def main():
-    default_db = '%s/sqlcanonclient.db' % tempfile.gettempdir()
-
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-    parser.add_argument(
-        'file', nargs='?',
-        help='MySQL log file to open, if not specified stdin will be used.')
-    parser.add_argument(
-        '-t', '--type', choices='sg',
-        help='Log file format -- s: slow query log, g: general query log',
-        default='s',)
-
-    parser.add_argument(
-        '-d', '--db', help='database name', default=default_db)
-
-    parser.add_argument(
-        '-s', '--stand-alone',
-        action='store_true',
-        help='Run as stand alone (will not send data to server).')
-    parser.add_argument(
-        '--server-base-url',
-        help='Server base URL.',
-        default='http://localhost:8000')
-    parser.add_argument(
-        '--save-statement-data-path',
-        help='URL to be used for saving statement data.',
-        default='/save-statement-data/',)
-    parser.add_argument(
-        '--save-explained-statement-path',
-        help='URL to be used for saving explain statement.',
-        default='/save-explained-statement/',)
-    parser.add_argument(
-        '-e', '--explain-options',
-        help='Explain MySQL options: h=<host>,u=<user>,p=<passwd>,d=<db>',
-        default='h=127.0.0.1,u=root')
-
-    action = parser.add_mutually_exclusive_group()
-    action.add_argument(
-        '-l', '--sniff',
-        action='store_true', default=False,
-        help='launch packet sniffer')
-    action.add_argument(
-        '--local-run-last-statements', action='store_true',
-        help='In stand alone mode, prints last seen statements')
-    action.add_argument(
-        '--print-top-queries',
-        help='Prints top queries stored on local data.',
-        default=0)
-
-    # local-run-last-statements options
-    parser.add_argument(
-        '--sliding-window-length', type=int,
-        help='Length of period in number of minutes.',
-        default=5)
-
-    # packet sniffer options
-    parser.add_argument(
-        '-i', '--interface',
-        help='interface to sniff from', default='lo0')
-    parser.add_argument(
-        '-f', '--filter', help='pcap-filter', default='dst port 3306',)
-
-    parser.add_argument(
-        '--encoding',
-        help='String encoding.',
-        default='utf_8')
-    parser.add_argument(
-        '--encoding-errors',
-        help='String encoding error handling scheme.',
-        choices=('strict', 'ignore', 'replace'),
-        default='replace')
-
-    parser.add_argument('--server-id', default=1, help='Server ID.')
-
-    global ARGS
-    ARGS = parser.parse_args()
-
-    if ARGS.local_run_last_statements and not ARGS.stand_alone:
+    if OPTIONS.local_run_last_statements and not OPTIONS.stand_alone:
         print 'Stand alone required.'
         sys.exit()
 
-    if ARGS.print_top_queries and not ARGS.stand_alone:
+    if OPTIONS.print_top_queries and not OPTIONS.stand_alone:
         print 'Stand alone required.'
         sys.exit()
 
-    if ARGS.stand_alone:
-        LocalData.init_db(ARGS.db)
+    if OPTIONS.stand_alone:
+        LocalData.init_db(OPTIONS.db)
 
     DataManager.set_last_db_used(None)
 
     # parse explain options
     global EXPLAIN_OPTIONS
-    if ARGS.explain_options:
+    if OPTIONS.explain_options:
         EXPLAIN_OPTIONS = dict(
             [(i[0].strip(), i[2].strip())
                 for i in [word.partition('=')
-                    for word in ARGS.explain_options.split(',')]])
+                    for word in OPTIONS.explain_options.split(',')]])
     if 'p' in EXPLAIN_OPTIONS and not EXPLAIN_OPTIONS['p']:
         EXPLAIN_OPTIONS['p'] = getpass.getpass(
             'Enter MySQL password for EXPLAIN operations:')
     else:
         EXPLAIN_OPTIONS['p'] = None
 
-    is_file_slow_query_log = (ARGS.type == 's')
-    is_file_general_query_log = (ARGS.type == 'g')
+    is_file_slow_query_log = (OPTIONS.type == 's')
+    is_file_general_query_log = (OPTIONS.type == 'g')
 
     try:
-        if ARGS.sniff:
+        if OPTIONS.sniff:
             run_packet_sniffer()
             sys.exit()
 
-        if ARGS.local_run_last_statements:
-            local_run_last_statements(ARGS.sliding_window_length)
+        if OPTIONS.local_run_last_statements:
+            local_run_last_statements(OPTIONS.sliding_window_length)
             sys.exit()
 
-        if ARGS.print_top_queries:
-            print_top_queries(ARGS.print_top_queries)
+        if OPTIONS.print_top_queries:
+            print_top_queries(OPTIONS.print_top_queries)
             sys.exit()
 
-        if is_file_slow_query_log and ARGS.file:
+        if is_file_slow_query_log and OPTIONS.file:
             print (
                 'MySQL slow query log file = {0}'
-                .format(ARGS.file))
+                .format(OPTIONS.file))
             slow_query_log_processor = SlowQueryLogProcessor()
-            with codecs.open(ARGS.file, encoding=ARGS.encoding,
-                    errors=ARGS.encoding_errors) as f:
+            with codecs.open(OPTIONS.file, encoding=OPTIONS.encoding,
+                    errors=OPTIONS.encoding_errors) as f:
                 slow_query_log_processor.process_log_contents(f)
 
-        elif is_file_slow_query_log and not ARGS.file:
+        elif is_file_slow_query_log and not OPTIONS.file:
             print 'Reading MySQL slow query log from stdin...'
             query_log_processor = SlowQueryLogProcessor()
-            f = codecs.getreader(ARGS.encoding)(
-                sys.stdin, errors=ARGS.encoding_errors)
+            f = codecs.getreader(OPTIONS.encoding)(
+                sys.stdin, errors=OPTIONS.encoding_errors)
             query_log_processor.process_log_contents(f)
 
-        elif is_file_general_query_log and ARGS.file:
+        elif is_file_general_query_log and OPTIONS.file:
             print (
                 'MySQL general query log file = {0}'
-                .format(ARGS.file))
+                .format(OPTIONS.file))
             query_log_processor = GeneralQueryLogProcessor()
-            with codecs.open(ARGS.file, encoding=ARGS.encoding,
-                    errors=ARGS.encoding_errors) as f:
+            with codecs.open(OPTIONS.file, encoding=OPTIONS.encoding,
+                    errors=OPTIONS.encoding_errors) as f:
                 query_log_processor.process_log_contents(f)
 
-        elif is_file_general_query_log and not ARGS.file :
+        elif is_file_general_query_log and not OPTIONS.file :
             print 'Reading MySQL general query log from stdin...'
             query_log_processor = GeneralQueryLogProcessor()
-            f = codecs.getreader(ARGS.encoding)(
-                sys.stdin, errors=ARGS.encoding_errors)
+            f = codecs.getreader(OPTIONS.encoding)(
+                sys.stdin, errors=OPTIONS.encoding_errors)
             query_log_processor.process_log_contents(f)
 
     except Exception, e:

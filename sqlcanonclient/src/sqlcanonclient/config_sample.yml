@@ -1,0 +1,61 @@
+# input file, if not specified, stdin will be used instead
+file: /var/log/mysql/mysql-slow.log
+
+# contents of input file
+# values: s|g
+#   s - MySQL slow query log
+#   g - MySQL general query log
+type: s
+
+# Local sqlite3 database, used in stand-alone mode
+db: /tmp/sqlcanonclient.db
+
+# Run in stand_alone mode?
+stand_alone: False
+
+# Server base url, used when not in stand-alone mode
+server_base_url: http://localhost:8000
+
+# Server paths: save statement
+save_statement_data_path: /save-statement-data/
+
+# Server paths: save explained statement
+save_explained_statement_path: /save_explained_statement_path/
+
+# DSN to be used when executing EXPLAIN statements in the form:
+# h=<host>,u=<user>,p=<passwd>,d=<db>
+explain_options: h=127.0.0.1
+
+# Run packet sniffer?
+sniff: False
+
+# Interface to listen to, when running packet sniffer.
+interface: lo0
+
+# An pcap-filter expression used to filter packets.
+# The default 'dst port 3306' will suffice to for listening packets with destination port 3306.
+filter: dst port 3306
+
+# Run a sliding window of last statements? (requires stand_alone=True)
+local_run_last_statements: False
+
+# The value specified here is in minutes and is used with local_run_last_statements option.
+# A value of 5 means 'display statements found in the last 5 minutes'.
+sliding_window_length: 5
+
+# The value N used to print top N queries. (requires stand_alone=True if N > 0)
+print_top_queries: 0
+
+# String encoding
+# default: utf_8
+encoding: utf_8
+
+# String encoding error handling scheme.
+# values: strict|ignore|replace
+encoding_errors: replace
+
+# Server ID
+server_id: 1
+
+
+
