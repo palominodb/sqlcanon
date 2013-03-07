@@ -28,12 +28,47 @@ Running sqlcanon server
 If this is the first time that you will run sqlcanon server, you will need to install its requirements first.
 It is recommended that virtual environment is used.
 
-### Requirements installation and database initialization
+### Requirements Installation
 ```
 $ virtualenv <envs_dir>/sqlcanon
 $ source <envs_dir>/sqlcanon/bin/activate
 $ cd <sqlcanon_src_root_dir>/sqlcanon
 $ ./install_requirements.sh
+```
+
+### Sqlcanon Server Database Configuration
+You can edit `<src_root_dir>/sqlcanon/sqlcanon/settings.py` or create `<src_root_dir>/sqlcanon/sqlcanon/local_settings.py` to override settings specified in `settings.py`.
+`settings.py` or `location_settings.py` should contain the following lines with the correct values:
+```
+DATABASES = {
+    'default': {
+        # Choices: 'postgresql_psycopg2', 'mysql', 'sqlite3' or 'oracle'.
+        'ENGINE': 'django.db.backends.' + 'mysql',
+
+        # Or path to database file if using sqlite3.
+        'NAME': 'sqlcanon_dev',
+
+        # Not used with sqlite3.
+        'USER': '',
+
+        # Not used with sqlite3.
+        'PASSWORD': '',
+
+        # Set to empty string for localhost. Not used with sqlite3.
+        'HOST': '',
+
+        # Set to empty string for default. Not used with sqlite3.
+        'PORT': '',
+    }
+}
+```
+**Supported Database Engines**
+MySQL: django.db.backends.mysql
+sqlite3: django.db.backends.sqlite3
+
+
+### Database Initialization
+```
 $ ./manage.py syncdb
 # Enter admin account/password when prompted
 $ ./manage.py migrate
@@ -58,15 +93,17 @@ $ pip install -r requirements.txt
 
 ### Usage
 ```
-sqlcanonclient.py [-h] [-t {s,g}] [-d DB] [-s]
-                  [--server-base-url SERVER_BASE_URL]
-                  [--save-statement-data-path SAVE_STATEMENT_DATA_PATH]
-                  [--save-explained-statement-path SAVE_EXPLAINED_STATEMENT_PATH]
-                  [-e EXPLAIN_OPTIONS]
-                  [-l | --local-run-last-statements | --print-top-queries PRINT_TOP_QUERIES]
-                  [--sliding-window-length SLIDING_WINDOW_LENGTH]
-                  [-i INTERFACE] [-f FILTER]
-                  [file]
+usage: sqlcanonclient.py [-h] [-t {s,g}] [-d DB] [-s]
+                         [--server-base-url SERVER_BASE_URL]
+                         [--save-statement-data-path SAVE_STATEMENT_DATA_PATH]
+                         [--save-explained-statement-path SAVE_EXPLAINED_STATEMENT_PATH]
+                         [-e EXPLAIN_OPTIONS]
+                         [-l | --local-run-last-statements | --print-top-queries PRINT_TOP_QUERIES]
+                         [--sliding-window-length SLIDING_WINDOW_LENGTH]
+                         [-i INTERFACE] [-f FILTER] [--encoding ENCODING]
+                         [--encoding-errors {strict,ignore,replace}]
+                         [-S SERVER_ID] [-C CONFIG]
+                         [file]
 
 positional arguments:
   file                  MySQL log file to open, if not specified stdin will be
@@ -91,7 +128,7 @@ optional arguments:
   -e EXPLAIN_OPTIONS, --explain-options EXPLAIN_OPTIONS
                         Explain MySQL options:
                         h=<host>,u=<user>,p=<passwd>,d=<db> (default:
-                        h=127.0.0.1,u=root)
+                        h=127.0.0.1)
   -l, --sniff           launch packet sniffer (default: False)
   --local-run-last-statements
                         In stand alone mode, prints last seen statements
@@ -108,7 +145,74 @@ optional arguments:
   --encoding-errors {strict,ignore,replace}
                         String encoding error handling scheme. (default:
                         replace)
+  -S SERVER_ID, --server-id SERVER_ID
+                        Server ID. (default: 1)
+  -C CONFIG, --config CONFIG
+                        Name of configuration file to use. (default:
+                        ./config.yml)
+```
 
+### Configration File
+If you specify a configuration file via `-C` or `--config`, the values from the file will be load and will override the values from the command line arguments. You have to use the longer versions of the option names in the configuration file. The following is a sample content:
+```
+# input file, if not specified, stdin will be used instead
+file: /var/log/mysql/mysql-slow.log
+
+# contents of input file
+# values: s|g
+#   s - MySQL slow query log
+#   g - MySQL general query log
+type: s
+
+# Local sqlite3 database, used in stand-alone mode
+db: /tmp/sqlcanonclient.db
+
+# Run in stand_alone mode?
+stand_alone: False
+
+# Server base url, used when not in stand-alone mode
+server_base_url: http://localhost:8000
+
+# Server paths: save statement
+save_statement_data_path: /save-statement-data/
+
+# Server paths: save explained statement
+save_explained_statement_path: /save_explained_statement_path/
+
+# DSN to be used when executing EXPLAIN statements in the form:
+# h=<host>,u=<user>,p=<passwd>,d=<db>
+explain_options: h=127.0.0.1
+
+# Run packet sniffer?
+sniff: False
+
+# Interface to listen to, when running packet sniffer.
+interface: lo0
+
+# An pcap-filter expression used to filter packets.
+# The default 'dst port 3306' will suffice to for listening packets with destination port 3306.
+filter: dst port 3306
+
+# Run a sliding window of last statements? (requires stand_alone=True)
+local_run_last_statements: False
+
+# The value specified here is in minutes and is used with local_run_last_statements option.
+# A value of 5 means 'display statements found in the last 5 minutes'.
+sliding_window_length: 5
+
+# The value N used to print top N queries. (requires stand_alone=True if N > 0)
+print_top_queries: 0
+
+# String encoding
+# default: utf_8
+encoding: utf_8
+
+# String encoding error handling scheme.
+# values: strict|ignore|replace
+encoding_errors: replace
+
+# Server ID
+server_id: 1
 ```
 
 ### Processing MySQL slow query log

@@ -1330,18 +1330,18 @@ class ServerData:
 
     @staticmethod
     def process_explain_requests(save_statement_data_response_content):
-        print 'process_explain_requests():'
+        #print 'process_explain_requests():'
         response = json.loads(save_statement_data_response_content)
         explain_items = response.get('explain', [])
-        print 'explain_items:'
-        pp(explain_items)
+        #print 'explain_items:'
+        #pp(explain_items)
         schema = response.get('schema')
-        print 'schema: %s' % (schema,)
+        #print 'schema: %s' % (schema,)
         if explain_items:
             explain_connection_options = DataManager.get_explain_connection_options()
             if schema:
                 explain_connection_options['db'] = schema
-            print 'explain_connection_options:'
+            #print 'explain_connection_options:'
             pp(explain_connection_options)
             try:
                 conn = MySQLdb.connect(**explain_connection_options)
