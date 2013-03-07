@@ -93,7 +93,7 @@ class Options(object):
         parser.add_argument(
             '-e', '--explain-options',
             help='Explain MySQL options: h=<host>,u=<user>,p=<passwd>,d=<db>',
-            default='h=127.0.0.1,u=root')
+            default='h=127.0.0.1')
 
         action = parser.add_mutually_exclusive_group()
         action.add_argument(
