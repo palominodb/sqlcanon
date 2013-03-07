@@ -1,0 +1,9 @@
+/usr/sbin/mysqld, Version: 5.5.29-0ubuntu0.12.04.2-log ((Ubuntu)). started with:
+Tcp port: 3306  Unix socket: /var/run/mysqld/mysqld.sock
+Time                 Id Command    Argument
+# Time: 130307 16:52:36
+# User@Host: elmer[elmer] @ localhost []
+# Thread_id: 18556985  Schema: sqlcanonclient_test  Last_errno: 0  Killed: 0
+# Query_time: 0.000253  Lock_time: 0.000033  Rows_sent: 123  Rows_examined: 456  Rows_affected: 789  Rows_read: 12
+# Bytes_sent: 345  Tmp_tables: 678  Tmp_disk_tables: 901  Tmp_table_sizes: 234
+select * from table1 where name in ('name1', 'name2')
