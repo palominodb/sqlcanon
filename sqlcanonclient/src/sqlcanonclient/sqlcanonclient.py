@@ -43,6 +43,8 @@ HOSTNAME = socket.gethostname()
 
 EXPLAIN_OPTIONS = None
 
+DEFAULT_CONFIG_FILE = './config.yml'
+
 
 class Options(object):
     """Encapsulates merged options from command-line arguments and config file."""
@@ -131,7 +133,8 @@ class Options(object):
 
         parser.add_argument('-S', '--server-id', default=1, help='Server ID.')
 
-        parser.add_argument('-C', '--config', help='Name of configuration file to use.')
+        parser.add_argument('-C', '--config', default=DEFAULT_CONFIG_FILE,
+            help='Name of configuration file to use.')
 
         self._args = parser.parse_args()
         #print 'options_from_args: %s' % (self._args,)
@@ -162,21 +165,29 @@ class Options(object):
         assert self._args
         self._config_file_options = None
         if self._args.config:
-            with open(self._args.config) as f:
-                self._config_file_options = yaml.load(''.join(f.readlines()))
+            try:
+                with open(self._args.config) as f:
+                    self._config_file_options = yaml.load(''.join(f.readlines()))
+            except IOError, ioerror:
+                if self._args.config != DEFAULT_CONFIG_FILE:
+                    print 'ERROR %s: %s' % (type(ioerror), ioerror)
+                    sys.exit()
         return self._config_file_options
 
     def _merge_options_from_config_file(self):
         fopts = self._load_options_from_config_file()
         #print 'config_file_options: %s' % (fopts,)
         if fopts:
-            for k, v in fopts.iteritems():
-                if hasattr(self, k):
-                    setattr(self, k, v)
-                    #print 'Updated option with value from config file: %s.' % (k,)
-                else:
-                    #print 'Unknown config file option: %s' % (k,)
-                    pass
+            if isinstance(fopts, dict):
+                for k, v in fopts.iteritems():
+                    if hasattr(self, k):
+                        setattr(self, k, v)
+                        #print 'Updated option with value from config file: %s.' % (k,)
+                    else:
+                        #print 'Unknown config file option: %s' % (k,)
+                        pass
+            else:
+                print 'Ignoring configuration file, format is incorrect.'
 
     def __str__(self):
         s = (
