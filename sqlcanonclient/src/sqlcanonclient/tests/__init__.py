@@ -1,0 +1,2 @@
+from tests.sqlcanonclient_test import QueryCanonicalizationTest
+from tests.old_tests import CanonicalizeSqlTests, QueryListerTests
