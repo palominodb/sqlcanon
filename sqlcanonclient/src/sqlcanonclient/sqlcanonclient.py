@@ -1076,6 +1076,9 @@ class LocalData:
         """
 
         server_id = OPTIONS.server_id
+        schema = None
+        if 'schema' in header_data and header_data['schema'].strip():
+            schema = header_data['schema'].strip()
 
         if dt is None:
             dt = datetime.datetime.now()
@@ -1187,13 +1190,17 @@ class LocalData:
                     WHERE sequence_id=?
                     """, (sequence_id, ))
                 statement_data_row = list(cur.fetchone())
-                statement_data_row.append(DataManager.get_last_db_used())
+                if not schema:
+                    schema = DataManager.get_last_db_used()
+                statement_data_row.append(schema)
                 statement_data_row.append(created_at)
                 statement_data_row.append(updated_at)
 
                 try:
-                    mysql_conn = MySQLdb.connect(
-                        **DataManager.get_explain_connection_options())
+                    connection_options = DataManager.get_explain_connection_options()
+                    if schema:
+                        connection_options['db'] = schema
+                    mysql_conn = MySQLdb.connect(**connection_options)
                     with mysql_conn:
                         mysql_cur = mysql_conn.cursor()
 
