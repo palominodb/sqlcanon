@@ -209,9 +209,7 @@ class Options(object):
         return s
 
 
-OPTIONS = Options()
-print OPTIONS
-
+OPTIONS = None
 
 
 class url_request(object):
@@ -1667,6 +1665,10 @@ def local_run_last_statements(window_length):
 
 
 def main():
+    global OPTIONS
+    OPTIONS = Options()
+    print OPTIONS
+
     if OPTIONS.local_run_last_statements and not OPTIONS.stand_alone:
         print 'Stand alone required.'
         sys.exit()
