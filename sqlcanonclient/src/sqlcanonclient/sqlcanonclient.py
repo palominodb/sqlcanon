@@ -1396,15 +1396,20 @@ class DataManager:
                 DataManager.set_last_db_used(
                     normalized_statement[4:].strip('; '))
 
-            DataManager.save_statement_data(
-                log_item_parser.dt,
-                statement,
-                HOSTNAME,
-                canonicalized_statement,
-                mmh3.hash(canonicalized_statement),
-                mmh3.hash(
-                    '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
-                log_item_parser.header_data)
+            # skip processing of blank statements and
+            # those that start with SET timestamp=
+            skip = (not normalized_statement.strip() or
+                normalized_statement.strip().startswith(u'SET timestamp='))
+            if not skip:
+                DataManager.save_statement_data(
+                    log_item_parser.dt,
+                    statement,
+                    HOSTNAME,
+                    canonicalized_statement,
+                    mmh3.hash(canonicalized_statement),
+                    mmh3.hash(
+                        '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
+                    log_item_parser.header_data)
 
 
     @staticmethod
