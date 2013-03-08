@@ -92,7 +92,7 @@ class Options(object):
             default='/save-explained-statement/',)
         parser.add_argument(
             '-e', '--explain-options',
-            help='Explain MySQL options: h=<host>,u=<user>,p=<passwd>,d=<db>',
+            help='Explain MySQL options: [h=<host>][,P=<port>][,u=<user>][,p=<passwd>][,d=<db>]',
             default='h=127.0.0.1')
 
         action = parser.add_mutually_exclusive_group()
@@ -1347,7 +1347,7 @@ class ServerData:
             if schema:
                 explain_connection_options['db'] = schema
             #print 'explain_connection_options:'
-            pp(explain_connection_options)
+            #pp(explain_connection_options)
             try:
                 conn = MySQLdb.connect(**explain_connection_options)
                 with conn:
@@ -1448,6 +1448,8 @@ class DataManager:
             connection_options['passwd'] = EXPLAIN_OPTIONS['p']
         if 'd' in EXPLAIN_OPTIONS:
             connection_options['db'] = EXPLAIN_OPTIONS['d']
+        if 'P' in EXPLAIN_OPTIONS:
+            connection_options['port'] = EXPLAIN_OPTIONS['P']
         elif DataManager._last_db_used:
             connection_options['db'] = DataManager._last_db_used
         return connection_options
@@ -1706,6 +1708,9 @@ def main():
             'Enter MySQL password for EXPLAIN operations:')
     else:
         EXPLAIN_OPTIONS['p'] = None
+    if 'P' in EXPLAIN_OPTIONS and EXPLAIN_OPTIONS['P']:
+        # make sure that port is integer
+        EXPLAIN_OPTIONS['P'] = int(EXPLAIN_OPTIONS['P'])
 
     is_file_slow_query_log = (OPTIONS.type == 's')
     is_file_general_query_log = (OPTIONS.type == 'g')
