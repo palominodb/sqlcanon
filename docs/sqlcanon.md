@@ -293,4 +293,8 @@ $ ./sqlcanonclient.py -l -i lo
 $ ./sqlcanonclient.py -l -i eth0 -f dst port 3306
 ```
 
-
+### Running Unit Tests
+```
+$ cd <sqlcanon_src_root_dir>/sqlcanonclient/src/sqlcanonclient
+$ python -m unittest -v tests
+```
