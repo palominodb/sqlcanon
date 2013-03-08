@@ -1396,15 +1396,17 @@ class DataManager:
                 DataManager.set_last_db_used(
                     normalized_statement[4:].strip('; '))
 
-            DataManager.save_statement_data(
-                log_item_parser.dt,
-                statement,
-                HOSTNAME,
-                canonicalized_statement,
-                mmh3.hash(canonicalized_statement),
-                mmh3.hash(
-                    '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
-                log_item_parser.header_data)
+            if normalized_statement.strip():
+                # process only non blank statements
+                DataManager.save_statement_data(
+                    log_item_parser.dt,
+                    statement,
+                    HOSTNAME,
+                    canonicalized_statement,
+                    mmh3.hash(canonicalized_statement),
+                    mmh3.hash(
+                        '{0}{1}'.format(canonicalized_statement, HOSTNAME)),
+                    log_item_parser.header_data)
 
 
     @staticmethod
