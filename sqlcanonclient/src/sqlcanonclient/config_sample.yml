@@ -23,7 +23,7 @@ save_statement_data_path: /save-statement-data/
 save_explained_statement_path: /save_explained_statement_path/
 
 # DSN to be used when executing EXPLAIN statements in the form:
-# h=<host>,u=<user>,p=<passwd>,d=<db>
+# [h=<host>][,P=<port>][,u=<user>][,p=<passwd>][,d=<db>]
 explain_options: h=127.0.0.1
 
 # Run packet sniffer?

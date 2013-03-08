@@ -127,8 +127,8 @@ optional arguments:
                         /save-explained-statement/)
   -e EXPLAIN_OPTIONS, --explain-options EXPLAIN_OPTIONS
                         Explain MySQL options:
-                        h=<host>,u=<user>,p=<passwd>,d=<db> (default:
-                        h=127.0.0.1)
+                        [h=<host>][,P=<port>][,u=<user>][,p=<passwd>][,d=<db>]
+                        (default: h=127.0.0.1)
   -l, --sniff           launch packet sniffer (default: False)
   --local-run-last-statements
                         In stand alone mode, prints last seen statements
