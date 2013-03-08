@@ -86,6 +86,8 @@ class MysqlSlowQueryLogParsingTest(unittest.TestCase):
 
     def test_mysql_slow_query_log_parse_contents(self):
         test_log_file = os.path.join(FILE_DIR, 'data', 'mysql-slow.log')
+
+        # emulate options
         class FakeOptions:
             def __init__(self):
                 self.stand_alone = True
@@ -104,33 +106,60 @@ class MysqlSlowQueryLogParsingTest(unittest.TestCase):
         conn = sqlite3.connect(self.db)
         with conn:
             c = conn.cursor()
-
             c.execute("""
                 select
                     statement, server_id, canonicalized_statement,
+                    canonicalized_statement_hostname_hash,
                     query_time, lock_time, rows_sent, rows_examined, rows_affected,
                     rows_read, bytes_sent, tmp_tables, tmp_disk_tables,
                     tmp_table_sizes
                 from statements""")
             rows = c.fetchall()
-            self.assertEqual(len(rows), 1)
-            row = rows[0]
-            self.assertEqual(row,
-                (
-                    u"select * from table1 where name in ('name1', 'name2')\n",
-                    1,
-                    u"SELECT * FROM `table1` WHERE `name` IN (N)",
-                    0.000253, 0.000033, 123, 456, 789,
-                    12, 345, 678, 901,
-                    234
-                ))
+
+            self.assertEqual(len(rows), 2)
+            r0 = rows[0]
+            r1 = rows[1]
+            self.assertEqual(r0[2], r1[2])
+            self.assertEqual(r0[3], r1[3])
+
+            # remove hash
+            ar0 = list(r0[0:3])
+            ar0.extend(r0[4:])
+            ar0 = tuple(ar0)
+            ar1 = list(r1[0:3])
+            ar1.extend(r1[4:])
+            ar1 = tuple(ar1)
+
+            # expected rows of statements table
+            er0 = (
+                u"select * from table1 where name in ('name1', 'name2')",
+                1,
+                u"SELECT * FROM `table1` WHERE `name` IN (N)",
+                0.0987, 0.6543, 0, 9, 8, 7, 6, 5, 4, 3
+            )
+            er1 = (
+                u"SELECT\n"
+                u"    *\n"
+                u"FROM\n"
+                u"    table1\n"
+                u"WHERE\n"
+                u"    name in ('n1', 'n2')",
+                1,
+                u"SELECT * FROM `table1` WHERE `name` IN (N)",
+                0.1234, 0.5678, 1, 2, 3, 4, 5, 6, 7, 8
+            )
+            expected = set((er0, er1))
+            actual = set((ar0, ar1))
+            self.assertEqual(expected, actual)
 
             c.execute('select * from explained_statements')
             rows = c.fetchall()
+            # only 1 explained statement should be found
             self.assertEqual(len(rows), 1)
 
             c.execute('select * from explain_results')
             rows = c.fetchall()
+            # explain_results should contain rows
             self.assertTrue(len(rows) > 0)
 
 

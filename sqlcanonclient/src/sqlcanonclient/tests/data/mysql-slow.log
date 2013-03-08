@@ -4,6 +4,19 @@ Time                 Id Command    Argument
 # Time: 130307 16:52:36
 # User@Host: elmer[elmer] @ localhost []
 # Thread_id: 18556985  Schema: sqlcanonclient_test  Last_errno: 0  Killed: 0
-# Query_time: 0.000253  Lock_time: 0.000033  Rows_sent: 123  Rows_examined: 456  Rows_affected: 789  Rows_read: 12
-# Bytes_sent: 345  Tmp_tables: 678  Tmp_disk_tables: 901  Tmp_table_sizes: 234
-select * from table1 where name in ('name1', 'name2')
+# Query_time: 0.0987  Lock_time: 0.6543  Rows_sent: 0  Rows_examined: 9  Rows_affected: 8  Rows_read: 7
+# Bytes_sent: 6  Tmp_tables: 5  Tmp_disk_tables: 4  Tmp_table_sizes: 3
+SET timestamp=2345515  ;
+select * from table1 where name in ('name1', 'name2')  ;
+# Time: 130307 16:52:36
+# User@Host: elmer[elmer] @ localhost []
+# Thread_id: 18556985  Schema: sqlcanonclient_test  Last_errno: 0  Killed: 0
+# Query_time: 0.1234  Lock_time: 0.5678  Rows_sent: 1  Rows_examined: 2  Rows_affected: 3  Rows_read: 4
+# Bytes_sent: 5  Tmp_tables: 6  Tmp_disk_tables: 7  Tmp_table_sizes: 8
+SET timestamp=123455  ;
+SELECT
+    *
+FROM
+    table1
+WHERE
+    name in ('n1', 'n2')   ;
