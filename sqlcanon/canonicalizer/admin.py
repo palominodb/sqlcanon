@@ -15,7 +15,7 @@ class StatementDataAdmin(admin.ModelAdmin):
         'created_at', 'updated_at')
 
 
-class ExplainResultInline(admin.StackedInline):
+class ExplainResultInline(admin.TabularInline):
     model = app_models.ExplainResult
 
 
