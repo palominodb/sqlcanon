@@ -1396,8 +1396,11 @@ class DataManager:
                 DataManager.set_last_db_used(
                     normalized_statement[4:].strip('; '))
 
-            if normalized_statement.strip():
-                # process only non blank statements
+            # skip processing of blank statements and
+            # those that start with SET timestamp=
+            skip = (not normalized_statement.strip() or
+                normalized_statement.strip().startswith(u'SET timestamp='))
+            if not skip:
                 DataManager.save_statement_data(
                     log_item_parser.dt,
                     statement,
