@@ -10,6 +10,7 @@ import pprint
 import os
 import re
 import socket
+import string
 import sys
 import tempfile
 import time
@@ -646,8 +647,8 @@ def canonicalizer_statement_insert(stmt):
 
     assert stmt.get_type() == 'INSERT'
 
-    normalized = ''
-    canonicalized = ''
+    normalized = u''
+    canonicalized = u''
     values = []
 
     found_values_keyword = False
@@ -666,11 +667,11 @@ def canonicalizer_statement_insert(stmt):
         if (token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline) and
             next_token and
             next_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline)):
-            t_normalized, t_canonicalized, t_values = ('', '', [])
+            t_normalized, t_canonicalized, t_values = (u'', u'', [])
         elif (type(token) is sqlparse.sql.Identifier) and prev_token.ttype in (Token.Operator,):
             t_normalized, t_canonicalized, t_values = (token.normalized, token.normalized, [])
         elif COLLAPSE_TARGET_PARTS and token.ttype in (Token.Keyword,):
-            if token.normalized == 'VALUES':
+            if token.normalized == u'VALUES':
                 found_values_keyword = True
                 #print 'found VALUES keyword: {0}'.format(token.normalized)
             else:
@@ -684,12 +685,12 @@ def canonicalizer_statement_insert(stmt):
             if not first_parenthesis_after_values_keyword:
                 first_parenthesis_after_values_keyword = token
             if first_parenthesis_after_values_keyword == token:
-                t_normalized, t_canonicalized, t_values = ('(N)', '(N)', [])
+                t_normalized, t_canonicalized, t_values = (u'(N)', u'(N)', [])
             else:
-                t_normalized, t_canonicalized, t_values = ('', '', [])
+                t_normalized, t_canonicalized, t_values = (u'', u'', [])
         elif COLLAPSE_TARGET_PARTS and token.ttype in (Token.Punctuation,)\
              and found_values_keyword and not found_new_keyword_afer_values_keyword:
-            t_normalized, t_canonicalized, t_values = ('', '', [])
+            t_normalized, t_canonicalized, t_values = (u'', u'', [])
         else:
             t_normalized, t_canonicalized, t_values = canonicalize_token(token)
         normalized += t_normalized
@@ -697,10 +698,18 @@ def canonicalizer_statement_insert(stmt):
         for t_value in t_values:
             values.append(t_value)
 
-    normalized = normalized.strip(' ;')
-    canonicalized = canonicalized.strip(' ;')
+    normalized = query_strip(normalized)
+    canonicalized = query_strip(canonicalized)
 
     return (normalized, canonicalized, values)
+
+
+def query_strip(query):
+    """Strips whitespace and ';' from query."""
+
+    stripped_chars = unicode(string.whitespace + ';')
+    return unicode(query.strip(stripped_chars))
+
 
 def canonicalize_statement(statement):
     """
@@ -708,14 +717,16 @@ def canonicalize_statement(statement):
 
     Returns a list of
         (
-            original statement,
+            stripped original statement,
             normalized statement,
             canonicalized statement,
             values for canonicalized statement
         )
     """
-    result = []
 
+    statement = query_strip(statement)
+
+    result = []
     parsed = sqlparse.parse(statement)
 
     for stmt in parsed:
@@ -733,8 +744,8 @@ def canonicalize_statement(statement):
             )
             continue
 
-        normalized = ''
-        canonicalized = ''
+        normalized = u''
+        canonicalized = u''
         values = []
         for token in stmt.tokens:
             token_index = stmt.token_index(token)
@@ -743,7 +754,7 @@ def canonicalize_statement(statement):
             if (token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline) and
                 next_token and
                 next_token.ttype in (Token.Text.Whitespace, Token.Text.Whitespace.Newline)):
-                t_normalized, t_canonicalized, t_values = ('', '', [])
+                t_normalized, t_canonicalized, t_values = (u'', u'', [])
             elif (type(token) is sqlparse.sql.Identifier) and prev_token.ttype in (Token.Operator,):
                 t_normalized, t_canonicalized, t_values = (token.normalized, token.normalized, [])
             else:
@@ -753,11 +764,11 @@ def canonicalize_statement(statement):
             for t_value in t_values:
                 values.append(t_value)
 
-        normalized = normalized.strip(' ;')
-        canonicalized = canonicalized.strip(' ;')
+        normalized = query_strip(normalized)
+        canonicalized = query_strip(canonicalized)
 
         result.append((
-            u'{0}'.format(stmt),
+            query_strip(u'{0}'.format(stmt)),
             normalized,
             canonicalized,
             values))
