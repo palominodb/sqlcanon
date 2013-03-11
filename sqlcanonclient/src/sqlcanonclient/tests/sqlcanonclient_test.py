@@ -101,9 +101,11 @@ class MySqlGenQueryLogParsingTest(unittest.TestCase):
         sqlcanonclient.DataManager.set_last_db_used(None)
         sqlcanonclient.EXPLAIN_OPTIONS = {}
 
-        proc = sqlcanonclient.GeneralQueryLogProcessor()
+        #proc = sqlcanonclient.GeneralQueryLogProcessor()
+        proc = sqlcanonclient.MySqlGenQueryLogQueryReader()
         with codecs.open(test_log_file, encoding='utf_8', errors='replace') as f:
-            proc.process_log_contents(f)
+            #proc.process_log_contents(f)
+            proc.read_lines(f)
 
         conn = sqlite3.connect(self.db)
         with conn:
