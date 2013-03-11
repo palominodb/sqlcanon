@@ -213,6 +213,107 @@ class Options(object):
 OPTIONS = None
 
 
+class LineReader(object):
+    """File line reader."""
+
+    def __init__(self):
+        super(LineReader, self).__init__()
+
+    def print_line(self, lno, ln):
+        print 'ln%d:' % (lno,), ln[:-1] if ln[-1] in ('\n', '\r') else ln
+
+    def got_line(self, lno, ln):
+        self.print_line(lno, ln)
+
+    def read_lines_complete(self):
+        pass
+
+    def read_lines(self, src):
+        # line number
+        lno = 0
+        for ln in src:
+            lno += 1
+            self.got_line(lno, ln)
+        self.read_lines_complete()
+        self.line_count = lno
+
+
+class MySqlGenQueryLogReader(LineReader):
+    """MySQL general query log reader."""
+
+    def __init__(self):
+        super(MySqlGenQueryLogReader, self).__init__()
+
+        self.pat = re.compile(
+            r"^((?P<dt>\d{2}\d{2}\d{2}\s+"
+            r"\d{1,2}:\d{2}:\d{2})?\t\s*"
+            r"(?P<id>\d+)\s"
+            r"(?P<cmd>.+?)\b)?"
+            r"(\t?(?P<arg>.*))?$")
+
+    def got_line(self, lno, ln):
+        #self.print_line(lno, ln)
+
+        if lno < 3:
+            # The first three lines compose the header, ignore them.
+            return
+
+        match = self.pat.match(ln)
+        if match:
+            dtstr = match.group('dt')
+            cid = match.group('id')
+            cmd = match.group('cmd')
+            arg = match.group('arg')
+
+            if cmd:
+                # this is a new cmd,
+                # if we have not processed the previous cmd,
+                # now is the time to do so
+                if self.last_cmd:
+                    self.got_log_item(dt=self.last_dt,
+                        cid=self.last_cid, cmd=self.last_cmd,
+                        arg=self.last_arg)
+
+                self.last_cmd = cmd
+                if cid:
+                    self.last_cid = cid
+
+                if dtstr:
+                    dt = datetime.datetime.strptime(dtstr, '%y%m%d %H:%M:%S')
+                    self.update_seen_dts(dt)
+
+                self.last_arg = arg if arg else ''
+            elif self.last_cmd:
+                # this is a continuation of the arg of the last cmd seen
+                self.last_arg += arg if arg else ''
+
+    def update_seen_dts(self, dt):
+        if not self.first_dt:
+            # set first datetime seen
+            self.first_dt = dt
+
+        # set last datetime seen
+        self.last_dt = dt
+
+    def read_lines_complete(self):
+        # process unprocessed last cmd if present
+        if self.last_cmd:
+            self.got_log_item(dt=self.last_dt, cid=self.last_cid,
+                cmd=self.last_cmd, arg=self.last_arg)
+
+    def got_log_item(self, dt=None, cid=None, cmd=None, arg=None):
+        print 'LOG ITEM: dt = %s, cid = %s, cmd = %s, arg = %s' % (
+            dt, cid, cmd, arg)
+
+    def read_lines(self, src):
+        self.first_dt = None
+        self.last_dt = None
+        self.last_cid = None
+        self.last_cmd = None
+        self.last_arg = None
+        super(MySqlGenQueryLogReader, self).read_lines(src)
+
+
 class url_request(object):
     """wrapper for urllib2"""
 
@@ -1491,9 +1592,9 @@ class DataManager:
 class GeneralQueryLogItemParser(object):
     """General query log item parser."""
 
-    QUERY_LOG_PATTERN_FULL_QUERY = (
-        r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)'
-        r'(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))')
+    #QUERY_LOG_PATTERN_FULL_QUERY = (
+    #    r'((\d+\s\d+:\d+:\d+\s+)|(\s+))\d+\sQuery\s+(?P<query>.+(\n.+)*?)'
+    #    r'(?=((\d+\s\d+:\d+:\d+\s+)|(\s+\d+\s)|(\s*$)))')
 
     def __init__(self):
         super(GeneralQueryLogItemParser, self).__init__()
@@ -1508,19 +1609,37 @@ class GeneralQueryLogItemParser(object):
         self.line_header_data = []
         self.header_data = {}
 
-        self._full_query_pattern = re.compile(
-            GeneralQueryLogItemParser.QUERY_LOG_PATTERN_FULL_QUERY)
+        #self._full_query_pattern = re.compile(
+        #    GeneralQueryLogItemParser.QUERY_LOG_PATTERN_FULL_QUERY)
 
     def parse_statement(self, lines_to_parse):
         # search for query embedded in lines
-        match = self._full_query_pattern.match(lines_to_parse)
-        if match:
-            self.statement = match.group('query')
-        else:
-            self.statement = None
+        #match = self._full_query_pattern.match(lines_to_parse)
+        #if match:
+        #    self.statement = match.group('query')
+        #else:
+        #    self.statement = None
+        self.statement = lines_to_parse
         return self.statement
 
 
+class MySqlGenQueryLogQueryReader(MySqlGenQueryLogReader):
+    """Parses MySQL general query log for Query commands."""
+
+    def __init__(self):
+        super(MySqlGenQueryLogQueryReader, self).__init__()
+
+    def got_log_item(self, dt=None, cid=None, cmd=None, arg=None):
+        if cmd and cmd.strip().lower() == 'query':
+            #print 'QUERY: dt = %s, cid = %s, cmd = %s, arg = %s' % (
+            #    dt, cid, cmd, arg)
+            log_item_parser = GeneralQueryLogItemParser()
+            if log_item_parser.parse_statement(arg):
+                print log_item_parser.statement
+                DataManager.save_data(log_item_parser)
+
+
+# TODO: remove this class, this is superseded by MySqlGenQueryLogQueryReader.
 class GeneralQueryLogProcessor(object):
     """Encapsulates operations on MySQL general query log."""
 
@@ -1759,17 +1878,21 @@ def main():
             print (
                 'MySQL general query log file = {0}'
                 .format(OPTIONS.file))
-            query_log_processor = GeneralQueryLogProcessor()
+            #query_log_processor = GeneralQueryLogProcessor()
+            query_log_processor = MySqlGenQueryLogQueryReader()
             with codecs.open(OPTIONS.file, encoding=OPTIONS.encoding,
                     errors=OPTIONS.encoding_errors) as f:
-                query_log_processor.process_log_contents(f)
+                #query_log_processor.process_log_contents(f)
+                query_log_processor.read_lines(f)
 
         elif is_file_general_query_log and not OPTIONS.file :
             print 'Reading MySQL general query log from stdin...'
-            query_log_processor = GeneralQueryLogProcessor()
+            #query_log_processor = GeneralQueryLogProcessor()
+            query_log_processor = MySqlGenQueryLogQueryReader()
             f = codecs.getreader(OPTIONS.encoding)(
                 sys.stdin, errors=OPTIONS.encoding_errors)
-            query_log_processor.process_log_contents(f)
+            #query_log_processor.process_log_contents(f)
+            query_log_processor.read_lines(f)
 
     except Exception, e:
         print 'An error has occurred: {0}'.format(e)

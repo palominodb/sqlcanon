@@ -1,0 +1,72 @@
+/usr/sbin/mysqld, Version: 5.5.29-0ubuntu0.12.04.2-log ((Ubuntu)). started with:
+Tcp port: 3306  Unix socket: /var/run/mysqld/mysqld.sock
+Time                 Id Command    Argument
+130309  1:07:39	 2623 Connect	elmer@localhost on
+		 2623 Query	select @@version_comment limit 1
+130309  1:07:44	 2623 Query	show databases
+130309  1:07:49	 2623 Query	SELECT DATABASE()
+		 2623 Init DB	information_schema
+		 2623 Query	show databases
+		 2623 Query	show tables
+		 2623 Field List	CHARACTER_SETS
+		 2623 Field List	COLLATIONS
+		 2623 Field List	COLLATION_CHARACTER_SET_APPLICABILITY
+		 2623 Field List	COLUMNS
+		 2623 Field List	COLUMN_PRIVILEGES
+		 2623 Field List	ENGINES
+		 2623 Field List	EVENTS
+		 2623 Field List	FILES
+		 2623 Field List	GLOBAL_STATUS
+		 2623 Field List	GLOBAL_VARIABLES
+		 2623 Field List	KEY_COLUMN_USAGE
+		 2623 Field List	PARAMETERS
+		 2623 Field List	PARTITIONS
+		 2623 Field List	PLUGINS
+		 2623 Field List	PROCESSLIST
+		 2623 Field List	PROFILING
+		 2623 Field List	REFERENTIAL_CONSTRAINTS
+		 2623 Field List	ROUTINES
+		 2623 Field List	SCHEMATA
+		 2623 Field List	SCHEMA_PRIVILEGES
+		 2623 Field List	SESSION_STATUS
+		 2623 Field List	SESSION_VARIABLES
+		 2623 Field List	STATISTICS
+		 2623 Field List	TABLES
+		 2623 Field List	TABLESPACES
+		 2623 Field List	TABLE_CONSTRAINTS
+		 2623 Field List	TABLE_PRIVILEGES
+		 2623 Field List	TRIGGERS
+		 2623 Field List	USER_PRIVILEGES
+		 2623 Field List	VIEWS
+		 2623 Field List	INNODB_BUFFER_PAGE
+		 2623 Field List	INNODB_TRX
+		 2623 Field List	INNODB_BUFFER_POOL_STATS
+		 2623 Field List	INNODB_LOCK_WAITS
+		 2623 Field List	INNODB_CMPMEM
+		 2623 Field List	INNODB_CMP
+		 2623 Field List	INNODB_LOCKS
+		 2623 Field List	INNODB_CMPMEM_RESET
+		 2623 Field List	INNODB_CMP_RESET
+		 2623 Field List	INNODB_BUFFER_PAGE_LRU
+130309  1:07:51	 2623 Query	show tables
+130309  1:08:01	 2623 Query	describe information_schema.tables
+130309  1:08:12	 2623 Query	select * from information_schema.tables limit 1
+130309  1:08:15	 2623 Quit
+130309  0:34:21	 1892 Connect	elmer@localhost on
+		 1892 Query	set autocommit=0
+		 1892 Query	CREATE SCHEMA sqlcanonclient_test
+		 1892 Query	USE sqlcanonclient_test
+		 1892 Query	CREATE TABLE table1 (
+                id int(11) NOT NULL AUTO_INCREMENT,
+                name varchar(255) DEFAULT NULL UNIQUE,
+                PRIMARY KEY (id)
+            ) ENGINE=InnoDB CHARACTER SET=utf8
+		 1892 Query	INSERT INTO table1 (name)
+            VALUES ('name1'), ('name2'), ('name3')
+130309  0:34:22	 1893 Connect	elmer@localhost on sqlcanonclient_test
+		 1893 Query	set autocommit=0
+		 1893 Query	select * from table1 where name in ('name1', 'name2')
+		 1893 Query	commit
+		 1893 Quit
+		 1892 Query	DROP SCHEMA sqlcanonclient_test
+		 1892 Quit

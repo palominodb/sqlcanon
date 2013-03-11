@@ -55,6 +55,76 @@ class QueryCanonicalizationTest(unittest.TestCase):
         self._test_canonicalize_statement(original_queries, parameterized_queries)
 
 
+class MySqlGenQueryLogParsingTest(unittest.TestCase):
+    """Tests for MySQL general query log parsing."""
+
+    def setUp(self):
+        tmpf = tempfile.NamedTemporaryFile(delete=False)
+        self.db = tmpf.name
+        tmpf.close()
+
+        self.conn = MySQLdb.connect()
+        c = self.conn.cursor()
+        c.execute('CREATE SCHEMA %s;' % (TEST_MYSQL_DB,))
+        c.execute('USE %s;' % (TEST_MYSQL_DB,))
+        c.execute("""
+            CREATE TABLE table1 (
+                id int(11) NOT NULL AUTO_INCREMENT,
+                name varchar(255) DEFAULT NULL UNIQUE,
+                PRIMARY KEY (id)
+            ) ENGINE=InnoDB CHARACTER SET=utf8;
+            """)
+        c.execute("""
+            INSERT INTO table1 (name)
+            VALUES ('name1'), ('name2'), ('name3')
+            """)
+        c.close()
+
+    def tearDown(self):
+        c = self.conn.cursor()
+        c.execute('DROP SCHEMA %s' % (TEST_MYSQL_DB,))
+        c.close()
+        self.conn.close()
+
+    def test_mysql_gen_query_log_parse_contents(self):
+        test_log_file = os.path.join(FILE_DIR, 'data', 'mysql.log')
+
+        # emulate options
+        class FakeOptions:
+            def __init__(self):
+                self.stand_alone = True
+                self.server_id = 1
+                self.type = 'g'
+                self.file = test_log_file
+        sqlcanonclient.OPTIONS = FakeOptions()
+        sqlcanonclient.LocalData.init_db(self.db)
+        sqlcanonclient.DataManager.set_last_db_used(None)
+        sqlcanonclient.EXPLAIN_OPTIONS = {}
+
+        #proc = sqlcanonclient.GeneralQueryLogProcessor()
+        proc = sqlcanonclient.MySqlGenQueryLogQueryReader()
+        with codecs.open(test_log_file, encoding='utf_8', errors='replace') as f:
+            #proc.process_log_contents(f)
+            proc.read_lines(f)
+
+        conn = sqlite3.connect(self.db)
+        with conn:
+            c = conn.cursor()
+            c.execute("""
+                select
+                    statement, server_id, canonicalized_statement,
+                    canonicalized_statement_hostname_hash,
+                    query_time, lock_time, rows_sent, rows_examined, rows_affected,
+                    rows_read, bytes_sent, tmp_tables, tmp_disk_tables,
+                    tmp_table_sizes
+                from statements""")
+            rows = c.fetchall()
+
+            # we had a total of 17 'Query' statements in log file
+            # check if all of them were processed
+            self.assertEqual(len(rows), 17)
+
+
 class MysqlSlowQueryLogParsingTest(unittest.TestCase):
     def setUp(self):
         tmpf = tempfile.NamedTemporaryFile(delete=False)
