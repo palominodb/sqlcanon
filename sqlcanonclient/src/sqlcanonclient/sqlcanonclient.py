@@ -1312,6 +1312,8 @@ class LocalData:
                     connection_options = DataManager.get_explain_connection_options()
                     if schema:
                         connection_options['db'] = schema
+                    #print 'explain connection:'
+                    #pp(connection_options)
                     mysql_conn = MySQLdb.connect(**connection_options)
                     with mysql_conn:
                         mysql_cur = mysql_conn.cursor()
@@ -1552,18 +1554,24 @@ class DataManager:
     @staticmethod
     def get_explain_connection_options():
         connection_options = {}
+
         if 'h' in EXPLAIN_OPTIONS:
             connection_options['host'] = EXPLAIN_OPTIONS['h']
-        if 'u' in EXPLAIN_OPTIONS:
-            connection_options['user'] = EXPLAIN_OPTIONS['u']
-        if 'p' in EXPLAIN_OPTIONS and EXPLAIN_OPTIONS['p']:
-            connection_options['passwd'] = EXPLAIN_OPTIONS['p']
-        if 'd' in EXPLAIN_OPTIONS:
-            connection_options['db'] = EXPLAIN_OPTIONS['d']
+
         if 'P' in EXPLAIN_OPTIONS:
             connection_options['port'] = EXPLAIN_OPTIONS['P']
+
+        if 'u' in EXPLAIN_OPTIONS:
+            connection_options['user'] = EXPLAIN_OPTIONS['u']
+
+        if 'p' in EXPLAIN_OPTIONS and EXPLAIN_OPTIONS['p']:
+            connection_options['passwd'] = EXPLAIN_OPTIONS['p']
+
+        if 'd' in EXPLAIN_OPTIONS:
+            connection_options['db'] = EXPLAIN_OPTIONS['d']
         elif DataManager._last_db_used:
             connection_options['db'] = DataManager._last_db_used
+
         return connection_options
 
     @staticmethod
@@ -1833,11 +1841,16 @@ def main():
             [(i[0].strip(), i[2].strip())
                 for i in [word.partition('=')
                     for word in OPTIONS.explain_options.split(',')]])
-    if 'p' in EXPLAIN_OPTIONS and not EXPLAIN_OPTIONS['p']:
+
+    if 'p' in EXPLAIN_OPTIONS and EXPLAIN_OPTIONS['p']:
+        # leave it as is
+        pass
+    elif 'p' in EXPLAIN_OPTIONS and not EXPLAIN_OPTIONS['p']:
         EXPLAIN_OPTIONS['p'] = getpass.getpass(
             'Enter MySQL password for EXPLAIN operations:')
     else:
         EXPLAIN_OPTIONS['p'] = None
+
     if 'P' in EXPLAIN_OPTIONS and EXPLAIN_OPTIONS['P']:
         # make sure that port is integer
         EXPLAIN_OPTIONS['P'] = int(EXPLAIN_OPTIONS['P'])
