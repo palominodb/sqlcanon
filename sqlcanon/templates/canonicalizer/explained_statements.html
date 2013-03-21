@@ -1,0 +1,30 @@
+{% extends 'site/contents_only_fluid_layout.html' %}
+{% load canonicalizer_tags %}
+
+{% block title %}Explained Statements{% endblock %}
+
+{% block navbar %}{% endblock %}
+
+{% block contents %}
+    <table class="table table-striped table-condensed table-bordered table-hover">
+        <thead>
+            <tr>
+                <th>Server ID</th>
+                <th>Canonicalized Statement</th>
+                <th>Hash</th>
+                <th>Schema</th>
+                <th>Results</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in stmts %}
+                <tr>
+                    <td>{{ r.server_id }}</td>
+                    <td>{{ r.canonicalized_statement }}</td>
+                    <td>{{ r.canonicalized_statement_hostname_hash|hex_str }}</td>
+                    <td>{{ r.db }}</td>
+                    <td><a href="{% url explain_results r.id %}">view</a></td>
+                </tr>
+            {% endfor %}
+        </tbody>
+{% endblock %}

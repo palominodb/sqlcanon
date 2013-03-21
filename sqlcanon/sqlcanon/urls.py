@@ -29,6 +29,14 @@ urlpatterns = patterns('',
         'canonicalizer.views.top_queries',
         name='top_queries'),
 
+    url(r'^explained-statements/',
+        'canonicalizer.views.explained_statements',
+        name='explained_statements'),
+
+    url(r'^explain-results/(?P<id>\d+)/',
+        'canonicalizer.views.explain_results',
+        name='explain_results'),
+
     url(r'^canonicalizer/', include('canonicalizer.urls')),
 
     # Uncomment the admin/doc line below to enable admin documentation:

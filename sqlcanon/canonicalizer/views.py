@@ -4,19 +4,36 @@ import logging
 import pprint
 
 from django.conf import settings
-from django.db.models import Max, Count
+from django.db.models import Max, Count, Sum, Avg
 from django.http import HttpResponse
-from django.shortcuts import render_to_response
+from django.shortcuts import render_to_response, redirect
 from django.template import RequestContext
 from django.utils import timezone, simplejson
 from django.views.decorators.csrf import csrf_exempt
 
+import canonicalizer.forms as app_forms
 import canonicalizer.funcs as app_funcs
 import canonicalizer.models as app_models
 import canonicalizer.utils as app_utils
 import canonicalizer.spark as spark
 
 LOGGER = logging.getLogger(__name__)
+
+
+def explain_results(request, id, template='canonicalizer/explain_results.html'):
+    """Shows explain results page."""
+    id = int(id)
+    expstmt = app_models.ExplainedStatement.objects.get(pk=id)
+    result = expstmt.explainresult_set.all()
+    return render_to_response(template, locals(), context_instance=RequestContext(request))
+
+
+def explained_statements(request,
+    template='canonicalizer/explained_statements.html'):
+    """Shows explained statements page."""
+
+    stmts = app_models.ExplainedStatement.objects.all()
+    return render_to_response(template, locals(), context_instance=RequestContext(request))
 
 
 @csrf_exempt
@@ -243,8 +260,27 @@ def last_statements(request, window_length,
         LOGGER.exception(u'{0}'.format(e))
 
 
-def home(request, template='home.html'):
+def home(request, template='site/home.html'):
     try:
+        tqf = None
+        lsf = None
+        if request.method == 'POST':
+            if 'view_top_queries' in request.POST:
+                tqf = app_forms.TopQueriesForm(request.POST)
+                if tqf.is_valid():
+                    return redirect('top_queries', tqf.cleaned_data['limit'])
+            if 'view_last_statements' in request.POST:
+                lsf = app_forms.LastStatementsForm(request.POST)
+                if lsf.is_valid():
+                    return redirect('last_statements', lsf.cleaned_data['minutes'])
+
+        if not tqf:
+            tqf = app_forms.TopQueriesForm()
+
+        if not lsf:
+            lsf = app_forms.LastStatementsForm()
+
+
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
     except Exception, e:
@@ -266,13 +302,54 @@ def top_queries(request, n, template='canonicalizer/top_queries.html'):
     try:
         n = int(n)
 
-        statement_data_qs = (
-            app_models.StatementData.objects
-            .values(
+        #statement_data_qs = (
+        #    app_models.StatementData.objects
+        #    .values(
+        #        'canonicalized_statement',
+        #        'server_id',
+        #        'canonicalized_statement_hostname_hash')
+        #    .annotate(Count('id')).order_by('-id__count')[:n])
+
+        qs = (
+            app_models.StatementData.objects.values(
                 'canonicalized_statement',
-                'server_id',
-                'canonicalized_statement_hostname_hash')
-            .annotate(Count('id')).order_by('-id__count')[:n])
+                'canonicalized_statement_hash',
+            ).annotate(
+                count=Count('id'),
+                total_query_time=Sum('query_time'),
+                total_lock_time=Sum('lock_time'),
+                total_rows_read=Sum('rows_read'),
+                avg_query_time=Avg('query_time'),
+                avg_lock_time=Avg('lock_time'),
+                avg_rows_read=Avg('rows_read')
+            )
+        ).order_by('-count')[:n]
+
+        #order_by = request.GET.get('order_by')
+        #col = None
+        #desc = None
+        #if order_by:
+        #    desc = order_by.startswith('-')
+        #    col = order_by
+        #    if col.startswith('-'):
+        #        col = col[1:]
+        #    qs = qs.order_by(order_by)
+        #qs = qs[:n]
+
+        #sort_urls = {}
+        #url = reverse('top_queries', args=[n])
+
+        #headers = ['canonicalized_statement', 'canonicalized_statement_hash',
+        #    'count', 'total_query_time', 'total_lock_time', 'total_rows_read',
+        #    'avg_query_time', 'avg_lock_time', 'avg_rows_read']
+
+        #for h in headers:
+        #    if col and col == h and not desc:
+        #        sort_urls[h] = url + '?order_by=-' + h
+        #    else:
+        #        sort_urls[h] = url + '?order_by=' + h
+
+        #print sort_urls
 
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))

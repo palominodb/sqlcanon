@@ -7,3 +7,4 @@ sqlparse==0.1.6
 mmh3==2.0
 http://sourceforge.net/projects/pylibpcap/files/pylibpcap/0.6.4/pylibpcap-0.6.4.tar.gz/download
 construct==2.06
+django-crispy-forms==1.2.3
