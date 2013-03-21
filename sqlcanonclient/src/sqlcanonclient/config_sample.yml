@@ -20,7 +20,7 @@ server_base_url: http://localhost:8000
 save_statement_data_path: /save-statement-data/
 
 # Server paths: save explained statement
-save_explained_statement_path: /save_explained_statement_path/
+save_explained_statement_path: /save-explained-statement/
 
 # DSN to be used when executing EXPLAIN statements in the form:
 # [h=<host>][,P=<port>][,u=<user>][,p=<passwd>][,d=<db>]
