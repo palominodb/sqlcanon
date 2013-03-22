@@ -7,7 +7,6 @@ class StatementData(models.Model):
     dt = models.DateTimeField(null=True, blank=True)
     statement = models.TextField(blank=True)
 
-    # was field: hostname
     server_id = models.IntegerField(null=True, blank=True)
 
     canonicalized_statement = models.TextField(blank=True)
@@ -25,11 +24,12 @@ class StatementData(models.Model):
     tmp_table_sizes = models.IntegerField(null=True, blank=True)
     sequence_id = models.IntegerField(null=True, blank=True)
 
-    # new
     created_at = models.DateTimeField(null=True, blank=True, auto_now_add=True)
-
-    # was last_updated
     updated_at = models.DateTimeField(null=True, blank=True, auto_now_add=True, auto_now=True)
+
+    # 2013-03-22 Elmer: added the following fields
+    hostname = models.CharField(max_length=256, blank=True, null=True)
+    schema = models.CharField(max_length=256, blank=True, null=True)
 
     class Meta:
         db_table = u'statements'
@@ -54,9 +54,11 @@ class StatementData(models.Model):
             u'tmp_tables={14}, '
             u'tmp_disk_tables={15}, '
             u'tmp_table_sizes={16}, '
-            u'sequence_id={17}, '
-            u'created_at={18}, '
-            u'updated_at={19}'
+            u'hostname={17}, '
+            u'schema={18}, '
+            u'sequence_id={19}, '
+            u'created_at={20}, '
+            u'updated_at={21}'
             u'>').format(
                 self.id,
                 self.dt,
@@ -76,6 +78,8 @@ class StatementData(models.Model):
                 self.tmp_disk_tables,
                 self.tmp_table_sizes,
                 self.sequence_id,
+                self.hostname,
+                self.schema,
                 self.created_at,
                 self.updated_at)
 

@@ -9,6 +9,8 @@
     <table id="top_queries" class="table table-striped table-condensed table-bordered table-hover tablesorter">
         <thead>
             <tr>
+                <th>Hostname</th>
+                <th>Schema</th>
                 <th>Canonicalized statement</th>
                 <th>Hash</th>
                 <th>Number of times seen</th>
@@ -23,7 +25,9 @@
         <tbody>
             {% for r in qs %}
                 <tr>
-                    <td>{{ r.canonicalized_statement }}</td>
+                    <td>{{ r.hostname }}</td>
+                    <td>{{ r.schema }}</td>
+                    <td class="statement">{{ r.canonicalized_statement }}</td>
                     <td>{{ r.canonicalized_statement_hash|hex_str }}</td>
                     <td>{{ r.count }}</td>
                     <td>{{ r.total_query_time }}</td>

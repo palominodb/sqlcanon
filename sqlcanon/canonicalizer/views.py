@@ -2,8 +2,10 @@ import datetime
 import decimal
 import logging
 import pprint
+import urllib
 
 from django.conf import settings
+from django.core.urlresolvers import reverse
 from django.db.models import Max, Count, Sum, Avg
 from django.http import HttpResponse
 from django.shortcuts import render_to_response, redirect
@@ -130,6 +132,9 @@ def save_statement_data(request):
 
         if 'schema' in data and data['schema'] and data['schema'].strip():
             v['schema'] = data['schema'].strip()
+
+        if 'hostname' in data and data['hostname'] and data['hostname'].strip():
+            v['hostname'] = data['hostname'].strip()
 
         return v
 
@@ -264,11 +269,57 @@ def home(request, template='site/home.html'):
     try:
         tqf = None
         lsf = None
+
+        count=Count('id'),
+        total_query_time=Sum('query_time'),
+        total_lock_time=Sum('lock_time'),
+        total_rows_read=Sum('rows_read'),
+        avg_query_time=Avg('query_time'),
+        avg_lock_time=Avg('lock_time'),
+        avg_rows_read=Avg('rows_read')
+        column_choices = [
+            ('count', 'Number of times seen'),
+            ('total_query_time', 'Total query time'),
+            ('total_lock_time', 'Total lock time'),
+            ('total_rows_read', 'Total rows read'),
+            ('avg_query_time', 'Avg query time'),
+            ('avg_lock_time', 'Avg lock time'),
+            ('avg_rows_read', 'Avg rows read')
+        ]
+
+        hostname_choices = [('__all__', '<All hostnames>')]
+        qs = app_models.StatementData.objects.values('hostname').distinct()
+        for r in qs:
+            k = r['hostname']
+            v = r['hostname']
+            if not v:
+                k = '__none__'
+                v = '<No hostname>'
+            hostname_choices.append((k, v))
+        schema_choices = [('__all__', '<All schemas>')]
+        qs = app_models.StatementData.objects.values('schema').distinct()
+        for r in qs:
+            k = r['schema']
+            v = r['schema']
+            if not v:
+                k = '__none__'
+                v = '<No schema>'
+            schema_choices.append((k, v))
+
         if request.method == 'POST':
             if 'view_top_queries' in request.POST:
                 tqf = app_forms.TopQueriesForm(request.POST)
+                tqf.fields['column'].choices = column_choices
+                tqf.fields['hostname'].choices = hostname_choices
+                tqf.fields['schema'].choices = schema_choices
                 if tqf.is_valid():
-                    return redirect('top_queries', tqf.cleaned_data['limit'])
+                    url = reverse('top_queries', args=[tqf.cleaned_data['limit']])
+                    params = dict(
+                        column=tqf.cleaned_data['column'],
+                        hostname=tqf.cleaned_data['hostname'],
+                        schema=tqf.cleaned_data['schema'])
+                    url += '?' + urllib.urlencode(params)
+                    return redirect(url)
             if 'view_last_statements' in request.POST:
                 lsf = app_forms.LastStatementsForm(request.POST)
                 if lsf.is_valid():
@@ -276,10 +327,12 @@ def home(request, template='site/home.html'):
 
         if not tqf:
             tqf = app_forms.TopQueriesForm()
+            tqf.fields['column'].choices = column_choices
+            tqf.fields['hostname'].choices = hostname_choices
+            tqf.fields['schema'].choices = schema_choices
 
         if not lsf:
             lsf = app_forms.LastStatementsForm()
-
 
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
@@ -302,19 +355,29 @@ def top_queries(request, n, template='canonicalizer/top_queries.html'):
     try:
         n = int(n)
 
-        #statement_data_qs = (
-        #    app_models.StatementData.objects
-        #    .values(
-        #        'canonicalized_statement',
-        #        'server_id',
-        #        'canonicalized_statement_hostname_hash')
-        #    .annotate(Count('id')).order_by('-id__count')[:n])
+        column = request.GET.get('column', 'count')
+        hostname = request.GET.get('hostname')
+        schema = request.GET.get('schema')
 
-        qs = (
-            app_models.StatementData.objects.values(
-                'canonicalized_statement',
-                'canonicalized_statement_hash',
-            ).annotate(
+        flds = []
+        if hostname:
+            flds.append('hostname')
+        if schema:
+            flds.append('schema')
+        flds.extend(['canonicalized_statement', 'canonicalized_statement_hash'])
+        qs = app_models.StatementData.objects.values(*flds)
+
+        if hostname and hostname == '__none__':
+            qs = qs.filter(hostname=None)
+        elif hostname and hostname != '__all__':
+            qs = qs.filter(hostname=hostname)
+
+        if schema and schema == '__none__':
+            qs = qs.filter(schema=None)
+        elif schema and schema != '__all__':
+            qs = qs.filter(schema=schema)
+
+        qs = qs.annotate(
                 count=Count('id'),
                 total_query_time=Sum('query_time'),
                 total_lock_time=Sum('lock_time'),
@@ -322,8 +385,7 @@ def top_queries(request, n, template='canonicalizer/top_queries.html'):
                 avg_query_time=Avg('query_time'),
                 avg_lock_time=Avg('lock_time'),
                 avg_rows_read=Avg('rows_read')
-            )
-        ).order_by('-count')[:n]
+            ).order_by('-%s' % (column,))[:n]
 
         #order_by = request.GET.get('order_by')
         #col = None

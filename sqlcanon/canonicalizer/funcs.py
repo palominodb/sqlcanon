@@ -74,6 +74,8 @@ def save_statement_data(**kwargs):
         statement_data.tmp_tables = kwargs.get('tmp_tables')
         statement_data.tmp_disk_tables = kwargs.get('tmp_disk_tables')
         statement_data.tmp_table_sizes = kwargs.get('tmp_table_sizes')
+        statement_data.hostname = kwargs.get('hostname')
+        statement_data.schema = kwargs.get('schema')
         statement_data.save()
 
     except ObjectDoesNotExist:
@@ -94,6 +96,8 @@ def save_statement_data(**kwargs):
             tmp_tables=kwargs.get('tmp_tables'),
             tmp_disk_tables=kwargs.get('tmp_disk_tables'),
             tmp_table_sizes=kwargs.get('tmp_table_sizes'),
+            hostname=kwargs.get('hostname'),
+            schema=kwargs.get('schema'),
             sequence_id=sequence_id,
         )
     return statement_data

@@ -1,4 +1,11 @@
 # Django settings for sqlcanon project.
+try:
+    import development
+    # This is a development machine
+    DEV = True
+except ImportError:
+    DEV = False
+
 import os
 
 PROJECT_ROOT = os.path.abspath(
@@ -112,6 +119,9 @@ MIDDLEWARE_CLASSES = (
     # 'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.transaction.TransactionMiddleware',
 )
+if DEV:
+    # debug_toolbar stuff
+    MIDDLEWARE_CLASSES = MIDDLEWARE_CLASSES + ('debug_toolbar.middleware.DebugToolbarMiddleware',)
 
 ROOT_URLCONF = 'sqlcanon.urls'
 
@@ -145,6 +155,24 @@ INSTALLED_APPS = (
     #==============
     'canonicalizer',
 )
+
+if DEV:
+    INSTALLED_APPS = INSTALLED_APPS + ('debug_toolbar',)
+
+    # debug_toolbar settings
+    INTERNAL_IPS = ('127.0.0.1',)
+    DEBUG_TOOLBAR_PANELS = (
+        'debug_toolbar.panels.version.VersionDebugPanel',
+        'debug_toolbar.panels.timer.TimerDebugPanel',
+        'debug_toolbar.panels.settings_vars.SettingsVarsDebugPanel',
+        'debug_toolbar.panels.headers.HeaderDebugPanel',
+        'debug_toolbar.panels.request_vars.RequestVarsDebugPanel',
+        'debug_toolbar.panels.template.TemplateDebugPanel',
+        'debug_toolbar.panels.sql.SQLDebugPanel',
+        'debug_toolbar.panels.signals.SignalDebugPanel',
+        'debug_toolbar.panels.logger.LoggingPanel',
+    )
+
 
 SITE_LOG_FILENAME = os.path.join(PROJECT_ROOT, 'site.log')
 
