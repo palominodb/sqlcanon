@@ -137,6 +137,9 @@ class Options(object):
         parser.add_argument('-C', '--config', default=DEFAULT_CONFIG_FILE,
             help='Name of configuration file to use.')
 
+        parser.add_argument('--no-skip-unknowns', action='store_true',
+            help='Any value other than 0 will skip processing of non DDL/DML statements.',)
+
         self._args = parser.parse_args()
         #print 'options_from_args: %s' % (self._args,)
         return self._args
@@ -161,6 +164,7 @@ class Options(object):
         self.encoding_errors = args.encoding_errors
         self.server_id = args.server_id
         self.config = args.config
+        self.no_skip_unknowns = args.no_skip_unknowns
 
     def _load_options_from_config_file(self):
         assert self._args
@@ -198,7 +202,7 @@ class Options(object):
             'explain_options=%s, sniff=%s, local_run_last_statements=%s, '
             'print_top_queries=%s, sliding_window_length=%s, interface=%s, '
             'filter=%s, encoding=%s, encoding_errors=%s, server_id=%s, '
-            'config=%s '
+            'config=%s, no_skip_unknowns=%s '
             '>'
             ) % (self.file,
             self.type, self.db, self.stand_alone, self.server_base_url,
@@ -206,7 +210,7 @@ class Options(object):
             self.explain_options, self.sniff, self.local_run_last_statements,
             self.print_top_queries, self.sliding_window_length, self.interface,
             self.filter, self.encoding, self.encoding_errors, self.server_id,
-            self.config)
+            self.config, self.no_skip_unknowns)
         return s
 
 
@@ -839,10 +843,11 @@ def canonicalize_statement(statement):
             result.append((u'{0}'.format(stmt), stmt_normalized, stmt_canonicalized, stmt_values))
             continue
         elif stmt.get_type() == STATEMENT_UNKNOWN:
-            #print 'UNKNOWN: => {0} <='.format(stmt)
-            result.append(
-                (u'{0}'.format(stmt), u'{0}'.format(stmt), STATEMENT_UNKNOWN, [])
-            )
+            if OPTIONS.no_skip_unknowns:
+                #print 'UNKNOWN: => {0} <='.format(stmt)
+                result.append(
+                    (u'{0}'.format(stmt), u'{0}'.format(stmt), STATEMENT_UNKNOWN, [])
+                )
             continue
 
         normalized = u''
