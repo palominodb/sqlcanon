@@ -102,7 +102,7 @@ usage: sqlcanonclient.py [-h] [-t {s,g}] [-d DB] [-s]
                          [--sliding-window-length SLIDING_WINDOW_LENGTH]
                          [-i INTERFACE] [-f FILTER] [--encoding ENCODING]
                          [--encoding-errors {strict,ignore,replace}]
-                         [-S SERVER_ID] [-C CONFIG]
+                         [-S SERVER_ID] [-C CONFIG] [--no-skip-unknowns]
                          [file]
 
 positional arguments:
@@ -150,10 +150,12 @@ optional arguments:
   -C CONFIG, --config CONFIG
                         Name of configuration file to use. (default:
                         ./config.yml)
+  --no-skip-unknowns    Any value other than 0 will skip processing of non
+                        DDL/DML statements. (default: False)
 ```
 
 ### Configration File
-If you specify a configuration file via `-C` or `--config`, the values from the file will be load and will override the values from the command line arguments. You have to use the longer versions of the option names in the configuration file. The following is a sample content:
+If you specify a configuration file via `-C` or `--config`, the values from the file will be load and will override the values from the command line arguments. You have to use the longer versions of the option names and convert dashes into underscores in the configuration file. The following is a sample content:
 ```
 # input file, if not specified, stdin will be used instead
 file: /var/log/mysql/mysql-slow.log
@@ -259,7 +261,7 @@ Current data views present on sqlcanon client are last statements seen and top q
 # continously display last seen statements for the last 5 minutes (usually ran under on another terminal window)
 $ ./sqlcanonclient.py -s -d ./data.db --local-run-last-statements --sliding-window-length 5
 
-# print top 5 queries
+# print top 5 queries (based on the count/number of instances of canonicalized statements, in descending order)
 $ ./sqlcanonclient.py -s -d ./data.db --print top-queries 5
 ```
 
@@ -288,13 +290,52 @@ $ cat /var/log/mysql/mysql.log | ./sqlcanonclient.py -s -d ./data.db -t g
 # sqlcanonclient needs user with privilege to capture packet data to run sniffer.
 # Listen from interface 'lo' (loopback)
 $ ./sqlcanonclient.py -l -i lo
+# On another terminal, connect a mysql client to test capture
+# Client was listening on lo interface, connect mysql client to loopback address
+$ mysql -h 127.0.0.1
 
 # Listen from interface 'eth0', filter packets by destination port 3306
 $ ./sqlcanonclient.py -l -i eth0 -f dst port 3306
+$ mysql -h 192.168.2.101
 ```
 
 ### Running Unit Tests
 ```
 $ cd <sqlcanon_src_root_dir>/sqlcanonclient/src/sqlcanonclient
 $ python -m unittest -v tests
+```
+
+Utilities
+---------
+
+### dosql.py (<root>/sqlcanonclient/src/sqlcanonclient/dosql.py)
+
+This script creates random data that can be used for testing.
+It can also perform selects to trigger MySQL logging.
+
+#### Usage
+```
+usage: dosql.py [-h] [-H HOST] [-P PORT] [-u USER] [-p PASSWD] [-d DB]
+                {inserts,selects}
+
+positional arguments:
+  {inserts,selects}     method to run.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -H HOST, --host HOST  db host (default: localhost)
+  -P PORT, --port PORT  db port (default: None)
+  -u USER, --user USER  db user (default: sandbox)
+  -p PASSWD, --passwd PASSWD
+                        db password (default: sandbox)
+  -d DB, --db DB        db name (default: sandbox)
+```
+
+*Sample Usage*
+```
+# Perform inserts
+$ ./dosql.py -H localhost -u sandbox -p sandbox -d sandbox inserts
+
+# Perform selects
+$ ./dosql.py -H localhost -u sandbox -p sandbox -d sandbox selects
 ```
