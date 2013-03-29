@@ -261,7 +261,7 @@ Current data views present on sqlcanon client are last statements seen and top q
 # continously display last seen statements for the last 5 minutes (usually ran under on another terminal window)
 $ ./sqlcanonclient.py -s -d ./data.db --local-run-last-statements --sliding-window-length 5
 
-# print top 5 queries (based on the count/number of instances of canonicalized statements, in descending order)
+# print top 5 queries (based on the count of canonicalized statement-hostname hash, in descending order)
 $ ./sqlcanonclient.py -s -d ./data.db --print top-queries 5
 ```
 
