@@ -19,6 +19,7 @@ import urllib
 import urllib2
 
 from construct.protocols.ipstack import ip_stack
+from dateutil.parser import parse as datetime_parse
 import pcap
 import mmh3
 import MySQLdb
@@ -26,6 +27,7 @@ import sqlite3
 import sqlparse
 from sqlparse.tokens import Token
 import yaml
+
 
 STATEMENT_DATA_MAX_ROWS = 1024
 
@@ -979,9 +981,14 @@ class SlowQueryLogItemParser(object):
     def parse_time_info(self, line):
         """Parses time info."""
 
-        __, __, date_str, time_str = line.split()
-        self.dt = datetime.datetime.strptime(
-            ' '.join([date_str, time_str]), '%y%m%d %H:%M:%S')
+        #__, __, date_str, time_str = line.split()
+        #self.dt = datetime.datetime.strptime(
+        #    ' '.join([date_str, time_str]), '%y%m%d %H:%M:%S')
+        dt_str = line[7:]
+        try:
+            self.dt = datetime_parse(dt_str)
+        except Exception, e:
+            print '%s' % (e,)
 
     def parse_user_info(self, line):
         """Parses user info."""
