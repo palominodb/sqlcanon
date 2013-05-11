@@ -1,17 +1,8 @@
 # Django settings for sqlcanon project.
-try:
-    import development
-    # This is a development machine
-    DEV = True
-except ImportError:
-    DEV = False
 
 import os
 
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), '..')
-)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
@@ -40,6 +31,12 @@ DATABASES = {
         'PORT': '',                      # Set to empty string for default. Not used with sqlite3.
     }
 }
+
+# Django 1.5.1
+#
+# Hosts/domain names that are valid for this site; required if DEBUG is False
+# See https://docs.djangoproject.com/en/1.5/ref/settings/#allowed-hosts
+ALLOWED_HOSTS = []
 
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
@@ -118,10 +115,8 @@ MIDDLEWARE_CLASSES = (
     # Uncomment the next line for simple clickjacking protection:
     # 'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.transaction.TransactionMiddleware',
+    'debug_toolbar.middleware.DebugToolbarMiddleware',
 )
-if DEV:
-    # debug_toolbar stuff
-    MIDDLEWARE_CLASSES = MIDDLEWARE_CLASSES + ('debug_toolbar.middleware.DebugToolbarMiddleware',)
 
 ROOT_URLCONF = 'sqlcanon.urls'
 
@@ -149,6 +144,8 @@ INSTALLED_APPS = (
 
     'south',
     'crispy_forms',
+    'tastypie',
+    'debug_toolbar',
 
     #==============
     # project apps
@@ -156,36 +153,64 @@ INSTALLED_APPS = (
     'canonicalizer',
 )
 
-if DEV:
-    INSTALLED_APPS = INSTALLED_APPS + ('debug_toolbar',)
-
-    # debug_toolbar settings
-    INTERNAL_IPS = ('127.0.0.1',)
-    DEBUG_TOOLBAR_PANELS = (
-        'debug_toolbar.panels.version.VersionDebugPanel',
-        'debug_toolbar.panels.timer.TimerDebugPanel',
-        'debug_toolbar.panels.settings_vars.SettingsVarsDebugPanel',
-        'debug_toolbar.panels.headers.HeaderDebugPanel',
-        'debug_toolbar.panels.request_vars.RequestVarsDebugPanel',
-        'debug_toolbar.panels.template.TemplateDebugPanel',
-        'debug_toolbar.panels.sql.SQLDebugPanel',
-        'debug_toolbar.panels.signals.SignalDebugPanel',
-        'debug_toolbar.panels.logger.LoggingPanel',
-    )
-
-
-SITE_LOG_FILENAME = os.path.join(PROJECT_ROOT, 'site.log')
-
-SITE_LOGGERS = {
-    'sqlcanon': {
-        'handlers': ['console', 'file'],
-        'level': 'DEBUG',
-        'propagate': True
+# A sample logging configuration. The only tangible logging
+# performed by this configuration is to send an email to
+# the site admins on every HTTP 500 error when DEBUG=False.
+# See http://docs.djangoproject.com/en/dev/topics/logging for
+# more details on how to customize your logging configuration.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse'
+        }
     },
-    'canonicalizer': {
-        'handlers': ['console', 'file'],
-        'level': 'DEBUG',
-        'propagate': True
+    'formatters': {
+        'simple': {
+            'format': u'[%(asctime)s] {%(pathname)s:%(lineno)d %(funcName)s} %(levelname)s:\n%(message)s\n',
+        },
+        'console': {
+            'format': u'[%(asctime)s] %(message)s',
+        },
+    },
+    'handlers': {
+        'mail_admins': {
+            'level': 'ERROR',
+            'filters': ['require_debug_false'],
+            'class': 'django.utils.log.AdminEmailHandler',
+        },
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'console',
+        },
+        'file': {
+            'level': 'DEBUG',
+            'formatter': 'simple',
+            'class': 'logging.FileHandler',
+            'filename': 'debug.log',
+            'mode': 'w',
+            'encoding': 'utf-8',
+            'delay': True,
+        },
+    },
+    'loggers': {
+        'django.request': {
+            'handlers': ['mail_admins'],
+            'level': 'ERROR',
+            'propagate': True,
+        },
+        'sqlcanon': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': True,
+            },
+        'canonicalizer': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        }
     },
 }
 
@@ -197,56 +222,4 @@ try:
 except ImportError:
     pass
 
-try:
-    # test if LOGGING was defined
-    LOGGING
-except NameError:
-    # A sample logging configuration. The only tangible logging
-    # performed by this configuration is to send an email to
-    # the site admins on every HTTP 500 error when DEBUG=False.
-    # See http://docs.djangoproject.com/en/dev/topics/logging for
-    # more details on how to customize your logging configuration.
-    LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'formatters': {
-            'verbose': {
-                'format': '%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s'
-            },
-            'simple': {
-                'format': '[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s'
-            },
-            },
-        'filters': {
-            'require_debug_false': {
-                '()': 'django.utils.log.RequireDebugFalse'
-            }
-        },
-        'handlers': {
-            'mail_admins': {
-                'level': 'ERROR',
-                'filters': ['require_debug_false'],
-                'class': 'django.utils.log.AdminEmailHandler'
-            },
-            'console': {
-                'level': 'DEBUG',
-                'class': 'logging.StreamHandler',
-                'formatter': 'simple'
-            },
-            'file': {
-                'level': 'DEBUG',
-                'class': 'logging.FileHandler',
-                'formatter': 'simple',
-                'filename': SITE_LOG_FILENAME,
-                'mode': 'a+',
-                }
-        },
-        'loggers': {
-            'django.request': {
-                'handlers': ['mail_admins'],
-                'level': 'ERROR',
-                'propagate': True,
-                }
-        }
-    }
-    LOGGING['loggers'].update(SITE_LOGGERS)
+
