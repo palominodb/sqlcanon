@@ -23,8 +23,9 @@
                     <td>{{ r.canonicalized_statement }}</td>
                     <td>{{ r.canonicalized_statement_hostname_hash|hex_str }}</td>
                     <td>{{ r.db }}</td>
-                    <td><a href="{% url explain_results r.id %}">view</a></td>
+                    <td><a href="{% url 'explain_results' r.id %}">view</a></td>
                 </tr>
             {% endfor %}
         </tbody>
+    </table>
 {% endblock %}

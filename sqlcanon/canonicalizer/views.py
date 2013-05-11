@@ -18,8 +18,9 @@ import canonicalizer.funcs as app_funcs
 import canonicalizer.models as app_models
 import canonicalizer.utils as app_utils
 import canonicalizer.spark as spark
+from canonicalizer.businesslogic import core as core_logic
 
-LOGGER = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def explain_results(request, id, template='canonicalizer/explain_results.html'):
@@ -27,15 +28,18 @@ def explain_results(request, id, template='canonicalizer/explain_results.html'):
     id = int(id)
     expstmt = app_models.ExplainedStatement.objects.get(pk=id)
     result = expstmt.explainresult_set.all()
-    return render_to_response(template, locals(), context_instance=RequestContext(request))
+    return render_to_response(
+        template, locals(), context_instance=RequestContext(request))
 
 
-def explained_statements(request,
-    template='canonicalizer/explained_statements.html'):
+def explained_statements(
+        request,
+        template='canonicalizer/explained_statements.html'):
     """Shows explained statements page."""
 
     stmts = app_models.ExplainedStatement.objects.all()
-    return render_to_response(template, locals(), context_instance=RequestContext(request))
+    return render_to_response(
+        template, locals(), context_instance=RequestContext(request))
 
 
 @csrf_exempt
@@ -59,15 +63,15 @@ def save_explained_statement(request):
     rv = {}
     try:
         if request.method == 'POST':
-            LOGGER.debug(u'\nrequest.POST:\n%s' % (pprint.pformat(request.POST)))
+            log.debug(u'\nrequest.POST:\n%s' % (pprint.pformat(request.POST)))
             post_vars_packed = post_vars(request.POST)
-            #LOGGER.debug('post_vars_packed = {0}'.format(post_vars_packed))
+            #log.debug('post_vars_packed = {0}'.format(post_vars_packed))
             explained_statement = app_funcs.save_explained_statement(
                 **post_vars_packed)
 
         ret = simplejson.dumps(rv)
     except Exception, e:
-        LOGGER.exception(u'{0}'.format(e))
+        log.exception(u'{0}'.format(e))
         ret = simplejson.dumps(dict(error=u'{0}'.format(e)))
     return HttpResponse(ret, mimetype='application/json')
 
@@ -83,7 +87,7 @@ def save_statement_data(request):
         try:
             data = simplejson.loads(post_data)
         except:
-            LOGGER.error(u'Could not successfully convert the following data to JSON object: {0}'.format(post_data))
+            log.error(u'Could not successfully convert the following data to JSON object: {0}'.format(post_data))
             return None
 
         v = {}
@@ -142,22 +146,22 @@ def save_statement_data(request):
     explain = []
     try:
         if request.method == 'POST':
-            LOGGER.debug(u'\nrequest.POST:\n%s' % (pprint.pformat(request.POST)))
+            log.debug(u'\nrequest.POST:\n%s' % (pprint.pformat(request.POST)))
 
             post_vars = get_post_vars(request.POST)
 
-            LOGGER.debug(u'\npost_vars:\n%s' % (pprint.pformat(post_vars)))
+            log.debug(u'\npost_vars:\n%s' % (pprint.pformat(post_vars)))
 
             if post_vars:
                 post_vars['dt'] = timezone.now()
 
-                #LOGGER.debug(u'post_vars={0}'.format(post_vars))
+                #log.debug(u'post_vars={0}'.format(post_vars))
 
                 statement = post_vars.get('statement')
                 canonicalized_statement = post_vars.get('canonicalized_statement')
                 canonicalized_statement_hostname_hash = post_vars.get('canonicalized_statement_hostname_hash')
 
-                #LOGGER.debug((
+                #log.debug((
                 #    u'\n'
                 #    u'statement:\n'
                 #    u'%s\n'
@@ -181,7 +185,7 @@ def save_statement_data(request):
                     # we saw this statement
                     first_seen = not count
 
-                    LOGGER.debug(u'\nis_select_statement=%s\nfirst_seen=%s' % (
+                    log.debug(u'\nis_select_statement=%s\nfirst_seen=%s' % (
                         is_select_statement, first_seen))
 
                 statement_data = app_funcs.save_statement_data(**post_vars)
@@ -196,7 +200,7 @@ def save_statement_data(request):
 
         ret = simplejson.dumps(dict(explain=explain))
     except Exception, e:
-        LOGGER.exception(u'{0}'.format(e))
+        log.exception(u'{0}'.format(e))
         ret = simplejson.dumps(dict(error=u'{0}'.format(e)))
     return HttpResponse(ret, mimetype='application/json')
 
@@ -262,7 +266,7 @@ def last_statements(request, window_length,
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
     except Exception, e:
-        LOGGER.exception(u'{0}'.format(e))
+        log.exception(u'{0}'.format(e))
 
 
 def home(request, template='site/home.html'):
@@ -337,7 +341,7 @@ def home(request, template='site/home.html'):
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
     except Exception, e:
-        LOGGER.exception(u'{0}'.format(e))
+        log.exception(u'{0}'.format(e))
 
 
 def sparkline(request, data):
@@ -348,7 +352,7 @@ def sparkline(request, data):
         image.save(response, 'PNG')
         return response
     except Exception, e:
-        LOGGER.exception(u'{0}'.format(e))
+        log.exception(u'{0}'.format(e))
 
 
 def top_queries(request, n, template='canonicalizer/top_queries.html'):
@@ -356,64 +360,18 @@ def top_queries(request, n, template='canonicalizer/top_queries.html'):
         n = int(n)
 
         column = request.GET.get('column', 'count')
-        hostname = request.GET.get('hostname')
-        schema = request.GET.get('schema')
+        hostname = request.GET.get('hostname', None)
+        schema = request.GET.get('schema', None)
 
-        flds = []
+        filter_dict = {}
         if hostname:
-            flds.append('hostname')
+            filter_dict['hostname'] = hostname
         if schema:
-            flds.append('schema')
-        flds.extend(['canonicalized_statement', 'canonicalized_statement_hash'])
-        qs = app_models.StatementData.objects.values(*flds)
+            filter_dict['schema'] = schema
 
-        if hostname and hostname == '__none__':
-            qs = qs.filter(hostname=None)
-        elif hostname and hostname != '__all__':
-            qs = qs.filter(hostname=hostname)
-
-        if schema and schema == '__none__':
-            qs = qs.filter(schema=None)
-        elif schema and schema != '__all__':
-            qs = qs.filter(schema=schema)
-
-        qs = qs.annotate(
-                count=Count('id'),
-                total_query_time=Sum('query_time'),
-                total_lock_time=Sum('lock_time'),
-                total_rows_read=Sum('rows_read'),
-                avg_query_time=Avg('query_time'),
-                avg_lock_time=Avg('lock_time'),
-                avg_rows_read=Avg('rows_read')
-            ).order_by('-%s' % (column,))[:n]
-
-        #order_by = request.GET.get('order_by')
-        #col = None
-        #desc = None
-        #if order_by:
-        #    desc = order_by.startswith('-')
-        #    col = order_by
-        #    if col.startswith('-'):
-        #        col = col[1:]
-        #    qs = qs.order_by(order_by)
-        #qs = qs[:n]
-
-        #sort_urls = {}
-        #url = reverse('top_queries', args=[n])
-
-        #headers = ['canonicalized_statement', 'canonicalized_statement_hash',
-        #    'count', 'total_query_time', 'total_lock_time', 'total_rows_read',
-        #    'avg_query_time', 'avg_lock_time', 'avg_rows_read']
-
-        #for h in headers:
-        #    if col and col == h and not desc:
-        #        sort_urls[h] = url + '?order_by=-' + h
-        #    else:
-        #        sort_urls[h] = url + '?order_by=' + h
-
-        #print sort_urls
+        qs = core_logic.get_top_queries(n, column, filter_dict)
 
         return render_to_response(template, locals(),
             context_instance=RequestContext(request))
     except Exception, e:
-        LOGGER.exception(u'{0}'.format(e))
+        log.exception(u'{0}'.format(e))

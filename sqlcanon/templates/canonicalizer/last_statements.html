@@ -33,7 +33,7 @@
                             {% endif %}{{ count }}</td>
                         <td>{{ hash }}</td>
                         <td>
-                            <img src="{% url canonicalizer_sparkline sparkline_data %}"
+                            <img src="{% url 'canonicalizer_sparkline' sparkline_data %}"
                                  alt="Data: {{ sparkline_data }}"/></td>
                         <td>{{ statement.server_id }}</td>
                         <td>{{ statement.statement }}</td>

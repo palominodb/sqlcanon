@@ -20,7 +20,7 @@ table.table.tablesorter thead tr th, table.table.tablesorter tfoot tr th {
     padding-right: 16px;
 }
 table.table.tablesorter thead tr .header {
-    /*background-image: url(../img/bg.gif); */
+    background-image: url(../img/bg.gif);
     background-repeat: no-repeat;
     background-position: center right;
     cursor: pointer;
