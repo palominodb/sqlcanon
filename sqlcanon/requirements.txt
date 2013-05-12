@@ -1,15 +1,17 @@
 MySQL-python
 PIL
-Django==1.4.3
-pytz
+Django
 South
-sqlparse
-mmh3
-http://sourceforge.net/projects/pylibpcap/files/pylibpcap/0.6.4/pylibpcap-0.6.4.tar.gz/download
-
-# Make sure to use construct 2.x, construct 3.x is incompatible
-construct==2.5.1
-
 django-crispy-forms
 django-debug-toolbar
 django-tastypie
+
+# used by Django for timezone support
+pytz
+
+# use version 1.5 for Python < 3.0
+# required by django-tastypie
+python-dateutil==1.5
+
+# required by django-tastypie
+mimeparse

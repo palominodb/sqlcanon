@@ -39,5 +39,5 @@ nosetests.xml
 *.db
 *.db-journal
 spike_*
-site.log
 tmp.*
+*.log
