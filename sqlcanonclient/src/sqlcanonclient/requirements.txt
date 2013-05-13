@@ -1,7 +1,0 @@
-MySQL-python==1.2.4
-sqlparse==0.1.6
-mmh3==2.0
-http://sourceforge.net/projects/pylibpcap/files/pylibpcap/0.6.4/pylibpcap-0.6.4.tar.gz/download#egg=pylibpcap-0.6.4
-construct==2.06
-PyYAML==3.10
-python-dateutil==1.5

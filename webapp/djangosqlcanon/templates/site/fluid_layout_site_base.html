@@ -1,0 +1,32 @@
+{% extends 'site/site_base.html' %}
+
+{% block head_extra %}
+    {{ block.super }}
+    <link
+        href="{{ STATIC_URL }}site/css/fluid_layout.css"
+        rel="stylesheet" />
+{% endblock %}
+
+{% block layout %}
+    <div class="container-fluid">
+        {% block navbar %}
+            <div class="navbar navbar-fixed-top navbar-inverse">
+                <div class="navbar-inner">
+                    <a
+                        class="brand"
+                        href="#">{% block brand %}Brand{% endblock %}</a>
+                    <ul class="nav">
+                        {% block nav_links %}
+                            <li class="active"><a href="#">Home</a></li>
+                            <li><a href="#">Link</a></li>
+                            <li><a href="#">Link</a></li>
+                        {% endblock %}
+                    </ul>
+                </div>
+            </div>
+        {% endblock %}
+        <div class="row-fluid">
+            {% block columns %}{% endblock %}
+        </div>
+    </div>
+{% endblock %}

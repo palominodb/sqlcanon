@@ -1,0 +1,45 @@
+{% extends 'site/contents_only_fluid_layout.html' %}
+
+{% block title %}Explain Results{% endblock %}
+
+{% block navbar %}{% endblock %}
+
+{% block contents %}
+    <p>
+        {{ explained_statement.canonicalized_statement }}
+    </p>
+    <table
+        class="table table-striped table-condensed table-bordered
+               table-hover">
+        <thead>
+            <tr>
+                <th>Select ID</th>
+                <th>Select Type</th>
+                <th>Table</th>
+                <th>Type</th>
+                <th>Possible Keys</th>
+                <th>Key</th>
+                <th>Key Len</th>
+                <th>Ref</th>
+                <th>Rows</th>
+                <th>Extra</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in result %}
+                <tr>
+                    <td>{{ r.select_id }}</td>
+                    <td>{{ r.select_type }}</td>
+                    <td>{{ r.table }}</td>
+                    <td>{{ r.type }}</td>
+                    <td>{{ r.possible_keys }}</td>
+                    <td>{{ r.key }}</td>
+                    <td>{{ r.key_len }}</td>
+                    <td>{{ r.ref }}</td>
+                    <td>{{ r.rows }}</td>
+                    <td>{{ r.extra }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}

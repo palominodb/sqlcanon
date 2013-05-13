@@ -1,0 +1,25 @@
+MySQL-python>=1.2.4
+PIL>=1.1.7
+Django>=1.5.1
+South>=0.7.6
+django-crispy-forms>=1.2.8
+django-debug-toolbar>=0.9.4
+django-tastypie>=0.9.15
+
+#
+# used by Django for timezone support
+#
+pytz
+
+#
+# required by django-tastypie
+# for Python 2.x, versions 1.x or 2.1 should be used
+#
+python-dateutil>=1.5,!=2.0
+
+#
+# required by django-tastypie
+#
+mimeparse
+
+
