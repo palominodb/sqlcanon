@@ -41,3 +41,6 @@ nosetests.xml
 spike_*
 tmp.*
 *.log
+
+# modified config file
+local_settings.py
